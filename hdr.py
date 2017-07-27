@@ -5,20 +5,37 @@ import matplotlib.pyplot as plt
 plt.switch_backend('Qt5Agg')
 
 
-def plot_contour_ks_2d(data, alpha, n_contours=50, level_set=True, plot_data=False):
-    """Contour plot of density probability.
+def hdr_boxplot(data, alpha, n_contours=50, level_set=True, plot_data=False):
+    """High Density Region boxplot.
 
-    2D kernel smoothing on a dataset with a Gaussian kernel. Then compute
-    contour lines using :attr:`alpha`. Finally, plot the bivariate plot.
+    Using the dataset :attr:`data`:
+
+    1. Compute a 2D kernel smoothing with a Gaussian kernel,
+    2. Compute contour lines using :attr:`alpha`,
+    3. Plot the bivariate plot,
+    4. Compute mediane curve along with quartiles and outliers.
 
     :param np.array data: dataset (n_samples, n_features)
     :param list(float) alpha: target quantiles
     :param int n_contours: discretization to compute contour
     :param bool level_set: use OpenTURNS computeMinimumVolumeLevelSetWithThreshold
     :param bool plot_data: append data on the bivariate plot
-    :returns: curves associated to alpha list
-    :rtypes: np.array
+    :returns: mediane curve along with 50%, 90% quartile (inf and sup curves) and outliers.
+    :rtypes: np.array, list(np.array), np.array
     """
+    # PCA and bivariate plot
+    pca = PCA(n_components=2)
+    data = pca.fit_transform(data)
+    
+    print('Explained variance ratio (first two components): {}'
+          .format(pca.explained_variance_ratio_))
+    
+    plt.figure('Bivariate space')
+    plt.scatter(data[:, 0], data[:, 1], alpha=.8)
+    plt.xlabel('First component')
+    plt.ylabel('Second component')
+    plt.show()
+
     # Create gaussian kernel
     kernel = ot.KernelSmoothing()
     ks_gaussian = kernel.build(data)
@@ -81,9 +98,6 @@ def plot_contour_ks_2d(data, alpha, n_contours=50, level_set=True, plot_data=Fal
 
     plt.show()
 
-    # pvalues = [ 0.00246924,  0.01403278,  0.03061416,  0.03600835]
-    # median = [-1, 0]
-
     # Find quartiles and outliers curves
     pdf = pdf.flatten()
 
@@ -97,6 +111,30 @@ def plot_contour_ks_2d(data, alpha, n_contours=50, level_set=True, plot_data=Fal
     mean_quartile = np.where(pdf > pvalues[1])
     mean_quartile = contour_stack[mean_quartile]
 
+    # Inverse transform from bivariate plot to dataset
+    median = pca.inverse_transform(median)
+    outliers = pca.inverse_transform(outliers)
+    extreme_quartile = pca.inverse_transform(extreme_quartile)
+    mean_quartile = pca.inverse_transform(mean_quartile)
+
+    extreme_quartile = [extreme_quartile.max(axis=0), extreme_quartile.min(axis=0)]
+    mean_quartile = [mean_quartile.max(axis=0), mean_quartile.min(axis=0)]
+
+    plt.figure('Time Serie')
+    n_sample, dim = data.shape
+    x_common = np.linspace(1, 12, dim)
+    plt.plot(np.array([x_common] * n_sample).T, data.T, alpha=.2)
+
+    plt.fill_between(x_common, *mean_quartile, color='gray', alpha=.4)
+    plt.fill_between(x_common, *extreme_quartile, color='gray', alpha=.4)
+
+    plt.plot(x_common, median, c='k')
+    plt.plot(np.array([x_common] * len(outliers)).T, outliers.T, c='r', alpha=0.7)
+
+    plt.xlabel('Month of the year')
+    plt.ylabel('Water surface temperature (°C)')
+    plt.show()
+
     return median, outliers, extreme_quartile, mean_quartile
 
 
@@ -106,39 +144,4 @@ def plot_contour_ks_2d(data, alpha, n_contours=50, level_set=True, plot_data=Fal
 data = np.loadtxt('data/elnino.dat')
 print('Data shape: ', data.shape)
 
-pca = PCA(n_components=2)
-X_r = pca.fit_transform(data)
-
-print('Explained variance ratio (first two components): {}'
-      .format(pca, pca.explained_variance_ratio_))
-
-plt.figure('Bivariate space')
-plt.scatter(X_r[:, 0], X_r[:, 1], alpha=.8)
-plt.xlabel('First component')
-plt.ylabel('Second component')
-plt.show()
-
-output = plot_contour_ks_2d(X_r, [0.9, 0.5, 0.1, 0.001])
-
-median, outliers, extreme_quartile, mean_quartile = output
-median = pca.inverse_transform(median)
-outliers = pca.inverse_transform(outliers)
-extreme_quartile = pca.inverse_transform(extreme_quartile)
-mean_quartile = pca.inverse_transform(mean_quartile)
-
-plt.figure('Time Serie')
-n_sample, dim = data.shape
-x_common = np.linspace(1, 12, dim)
-plt.plot(np.array([x_common] * n_sample).T, data.T, alpha=.2)
-
-plt.fill_between(x_common, mean_quartile.max(axis=0),
-                 mean_quartile.min(axis=0), color='gray', alpha=.4)
-plt.fill_between(x_common, extreme_quartile.max(axis=0),
-                 extreme_quartile.min(axis=0), color='gray', alpha=.4)
-
-plt.plot(x_common, median, c='k')
-plt.plot(np.array([x_common] * len(outliers)).T, outliers.T, c='r', alpha=0.7)
-
-plt.xlabel('Month of the year')
-plt.ylabel('Water surface temperature (°C)')
-plt.show()
+output = hdr_boxplot(data, [0.9, 0.5, 0.1, 0.001])
