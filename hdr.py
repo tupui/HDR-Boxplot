@@ -1,11 +1,11 @@
 import numpy as np
 import openturns as ot
-import pylab as pl
 from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 plt.switch_backend('Qt5Agg')
 
-def contour_2d(data, n_contours):
+
+def contour_ks_2d(data, n_contours):
     """Compute contour in 2D.
 
     :param np.array data: dataset (n_samples, n_features)
@@ -22,7 +22,7 @@ def contour_2d(data, n_contours):
 
     x1 = np.linspace(*min_max[0], n_contours)
     x2 = np.linspace(*min_max[1], n_contours)
-    
+
     contour_grid = np.meshgrid(x1, x2)
     contour_stack = np.dstack(contour_grid).reshape(-1, 2)
 
@@ -31,106 +31,99 @@ def contour_2d(data, n_contours):
 
     return contour_grid, pdf, ks_gaussian
 
-def plotContourByKS2D(data,Ncontour,relativeFactor,alpha,numberOfContourLines,contourByLevelSet,plotData):
-    
-    contour_grid, Z, ks_gaussian = contour_2d(data, Ncontour)
+
+def plot_contour_ks_2d(data, alpha, n_contours=50, level_set=True, plot_data=False):
+
+    contour_grid, pdf, ks_gaussian = contour_ks_2d(data, n_contours)
 
     X1, X2 = contour_grid
-    
-    if (contourByLevelSet):
-        # 3. Calcule la ligne de niveau pvalue associée a un niveau donné de probabilité
-        numberOfContourLines=len(alpha)
-        pvalues=np.zeros(numberOfContourLines)
-        for i in range(numberOfContourLines):
-            levelSet, threshold = ks_gaussian.computeMinimumVolumeLevelSetWithThreshold(alpha[i])  # (*)
-            pvalues[i]=threshold
-        # 4. Cree le contour
-        print(pvalues)
-        CS = pl.contour(X1, X2, Z, pvalues)
-        # 5. Calcule les labels : affiche la probabilité plutôt que la densité
+
+    plt.figure('Bivariate space: 2D Kernel Smoothing with Gaussian kernel')
+    if level_set:
+        # Compute contour line of pvalue linked to a given probability level
+        n_contour_lines = len(alpha)
+        pvalues = np.zeros(n_contour_lines)
+        for i in range(n_contour_lines):
+            levelSet, threshold = ks_gaussian.computeMinimumVolumeLevelSetWithThreshold(alpha[i])
+            pvalues[i] = threshold
+
+        # Create contour plot
+        fig = plt.contour(*contour_grid, pdf, pvalues)
+
+        # Labels: probability instead of density
         fmt = {}
-        for i in range(numberOfContourLines):
-            l = CS.levels[i]
-            fmt[l] = "%.0f %%" % (alpha[i]*100)
-        # 6. Create contour plot (enfin !)
-        pl.clabel(CS, CS.levels, inline=True, fontsize=10, fmt=fmt)
+        for i in range(n_contour_lines):
+            l = fig.levels[i]
+            fmt[l] = "%.0f %%" % (alpha[i] * 100)
+        plt.clabel(fig, fig.levels, inline=True, fontsize=10, fmt=fmt)
     else:
-        # 4. Cree le contour
-        CS = pl.contour(X1, X2, Z, numberOfContourLines)
-        #
+        # Create contour plot
+        fig = plt.contour(*contour_grid, pdf, n_contour_lines)
+
         fmt = {}
-        for l in CS.levels:
+        for l in fig.levels:
             fmt[l] = "%.0e" % (l)
-        # 6. Create contour plot (enfin !)
-        pl.clabel(CS, CS.levels, inline=True, fontsize=10, fmt=fmt)
-    # 7. Dessine le nuage
-    if (plotData):
-        pl.plot(data[:,0],data[:,1],"b.")
-    pl.title('2D Kernel Smoothing with Gaussian kernel')
-    pl.xlabel('First component')
-    pl.ylabel('Second component')
+        plt.clabel(fig, fig.levels, inline=True, fontsize=10, fmt=fmt)
 
-    # median = np.unravel_index(Z.argmax(), Z.shape)
+    if plot_data:
+        plt.plot(data[:, 0], data[:, 1], "b.")
+    plt.xlabel('First component')
+    plt.ylabel('Second component')
+
+    # median = np.unravel_index(pdf.argmax(), pdf.shape)
     # median = (X1[median], X2[median])
-    # pl.plot(median, c='r', marker='^')
+    # plt.plot(median, c='r', marker='^')
 
-    median_path = CS.collections[-1].get_paths()[0]
+    median_path = fig.collections[-1].get_paths()[0]
     median = np.median(median_path.vertices, axis=0)
-    pl.plot(median[0], median[1], c='r', marker='^')
+    plt.plot(median[0], median[1], c='r', marker='^')
 
-    # pl.contourf(X1, X2, Z)
+    plt.show()
 
-    pl.show()
-
-
-    outlier_path = np.unravel_index(np.where(Z < pvalues[0]), Z.shape)
+    outlier_path = np.unravel_index(np.where(pdf < pvalues[0]), pdf.shape)
     outlier_path = np.array([X1[outlier_path], X2[outlier_path]])
-    extreme_quartile_path = np.unravel_index(np.where((Z > pvalues[0]) & (Z < pvalues[1])), Z.shape)
-    mean_quartile_path = np.unravel_index(np.where((Z > pvalues[1]) & (Z < pvalues[2])), Z.shape)
+    extreme_quartile_path = np.unravel_index(
+        np.where((pdf > pvalues[0]) & (pdf < pvalues[1])), pdf.shape)
+    mean_quartile_path = np.unravel_index(
+        np.where((pdf > pvalues[1]) & (pdf < pvalues[2])), pdf.shape)
 
     return median, outlier_path, extreme_quartile_path, mean_quartile_path
 
+
+# Water surface temperature data from:
 # https://www.math.univ-toulouse.fr/~ferraty/SOFTWARES/NPFDA/npfda-datasets.html
 # http://www.cpc.ncep.noaa.gov/data/indices/
 data = np.loadtxt('data/elnino.dat')
-
-print(data.shape)
+print('Data shape: ', data.shape)
 
 pca = PCA(n_components=2)
-print(pca)
-
 X_r = pca.fit_transform(data)
 
-print('explained variance ratio (first two components): %s'
-      % str(pca.explained_variance_ratio_))
+pca_info = ("PCA: {}\n"
+            "Explained variance ratio (first two components): {}")
+print(pca_info.format(pca, pca.explained_variance_ratio_))
 
-plt.figure()
+plt.figure('Bivariate space')
 plt.scatter(X_r[:, 0], X_r[:, 1], alpha=.8)
+plt.xlabel('First component')
+plt.ylabel('Second component')
 plt.show()
 
-
-Ncontour=50
-relativeFactor = 0.1
-alpha=[0.9,0.5,0.1, 0.001]
-numberOfContourLines = 5
-contourByLevelSet = True
-plotData = False
-
-output = plotContourByKS2D(X_r,Ncontour,relativeFactor,alpha,numberOfContourLines,contourByLevelSet,plotData)
+output = plot_contour_ks_2d(X_r, [0.9, 0.5, 0.1, 0.001])
 
 median, outlier_path, extreme_quartile_path, mean_quartile_path = output
 median = pca.inverse_transform(median)
-outlier_path = pca.inverse_transform(outlier_path)
-extreme_quartile_path = pca.inverse_transform(extreme_quartile_path)
-mean_quartile_path = pca.inverse_transform(mean_quartile_path)
+# outlier_path = pca.inverse_transform(outlier_path)
+# extreme_quartile_path = pca.inverse_transform(extreme_quartile_path)
+# mean_quartile_path = pca.inverse_transform(mean_quartile_path)
 
-
-plt.figure()
+plt.figure('Time serie')
 n_sample, dim = data.shape
-x_common = np.linspace(1, 10, dim)
+x_common = np.linspace(1, 12, dim)
 plt.plot(np.array([x_common] * n_sample).T, data.T, alpha=.3)
 plt.plot(x_common, median, c='k')
 
-plt.plot(np.array([x_common] * len(outlier_path)).T, outlier_path.T, c='r')
-
+# plt.plot(np.array([x_common] * len(outlier_path)).T, outlier_path.T, c='r')
+plt.xlabel('Month of the year')
+plt.ylabel('Water surface temperature (°C)')
 plt.show()
