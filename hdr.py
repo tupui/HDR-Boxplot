@@ -5,15 +5,21 @@ import matplotlib.pyplot as plt
 plt.switch_backend('Qt5Agg')
 
 
-def contour_ks_2d(data, n_contours):
-    """Compute contour in 2D.
+def plot_contour_ks_2d(data, alpha, n_contours=50, level_set=True, plot_data=False):
+    """Contour plot of density probability.
+
+    2D kernel smoothing on a dataset with a Gaussian kernel. Then compute
+    contour lines using :attr:`alpha`. Finally, plot the bivariate plot.
 
     :param np.array data: dataset (n_samples, n_features)
-    :param int n_contours: discretization for the contours
-    :return: contour grid, pdf values and gaussian kernel
+    :param list(float) alpha: target quantiles
+    :param int n_contours: discretization to compute contour
+    :param bool level_set: use OpenTURNS computeMinimumVolumeLevelSetWithThreshold
+    :param bool plot_data: append data on the bivariate plot
+    :returns: curves associated to alpha list
+    :rtypes: np.array
     """
     # Create gaussian kernel
-    # ot.Sample(data)
     kernel = ot.KernelSmoothing()
     ks_gaussian = kernel.build(data)
 
@@ -28,13 +34,6 @@ def contour_ks_2d(data, n_contours):
 
     pdf = ks_gaussian.computePDF(contour_stack)
     pdf = np.array(pdf).reshape((n_contours, n_contours))
-
-    return contour_grid, pdf, ks_gaussian
-
-
-def plot_contour_ks_2d(data, alpha, n_contours=50, level_set=True, plot_data=False):
-
-    contour_grid, pdf, ks_gaussian = contour_ks_2d(data, n_contours)
 
     X1, X2 = contour_grid
 
