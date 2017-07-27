@@ -129,10 +129,13 @@ plt.figure('Time Serie')
 n_sample, dim = data.shape
 x_common = np.linspace(1, 12, dim)
 plt.plot(np.array([x_common] * n_sample).T, data.T, alpha=.4)
-plt.plot(x_common, median, c='k')
 
-plt.plot(np.array([x_common] * len(mean_quartile)).T, mean_quartile.T, c='gray', alpha=.2)
-plt.plot(np.array([x_common] * len(extreme_quartile)).T, extreme_quartile.T, c='gray', alpha=.1)
+plt.fill_between(x_common, mean_quartile.max(axis=0),
+                 mean_quartile.min(axis=0), color='gray', alpha=.5)
+plt.fill_between(x_common, extreme_quartile.max(axis=0),
+                 extreme_quartile.min(axis=0), color='gray', alpha=.5)
+
+plt.plot(x_common, median, c='k')
 
 plt.xlabel('Month of the year')
 plt.ylabel('Water surface temperature (°C)')
