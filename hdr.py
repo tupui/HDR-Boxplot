@@ -1,56 +1,48 @@
-from batman.functions import Channel_Flow
-from batman.space import Space
-from sklearn.decomposition import PCA
-import matplotlib.pyplot as plt
-plt.switch_backend('Qt5Agg')
 import numpy as np
 import openturns as ot
 import pylab as pl
+from sklearn.decomposition import PCA
+import matplotlib.pyplot as plt
+plt.switch_backend('Qt5Agg')
 
-def computeContour2D(X1pars,X2pars,dist):
-    X1min,X1max,nX1 = X1pars
-    X2min,X2max,nX2 = X2pars
-    #
-    x1 = np.linspace(X1min, X1max, nX1)
-    x2 = np.linspace(X2min, X2max, nX2)
-    X1, X2 = np.meshgrid(x1, x2)
-    #
-    X1flat = X1.flatten()
-    X2flat = X2.flatten()
-    #
-    X1flat = ot.NumericalSample(X1flat,1)
-    X2flat = ot.NumericalSample(X2flat,1)
-    #
-    inputContour = ot.NumericalSample(nX1*nX2, 2)
-    inputContour[:,0] = X1flat
-    inputContour[:,1] = X2flat
-    Z = dist.computePDF(inputContour)
-    #
-    Z = np.array(Z)
-    Z = Z.reshape((nX1,nX2))
-    return [X1,X2,Z]
+def contour_2d(data, n_contours):
+    """Compute contour in 2D.
+
+    :param np.array data: dataset (n_samples, n_features)
+    :param int n_contours: discretization for the contours
+    :return: contour grid, pdf values and gaussian kernel
+    """
+    # Create gaussian kernel
+    # ot.Sample(data)
+    kernel = ot.KernelSmoothing()
+    ks_gaussian = kernel.build(data)
+
+    # Evaluate density on a regular grid
+    min_max = np.array([data.min(axis=0), data.max(axis=0)]).T
+
+    x1 = np.linspace(*min_max[0], n_contours)
+    x2 = np.linspace(*min_max[1], n_contours)
+    
+    contour_grid = np.meshgrid(x1, x2)
+    contour_stack = np.dstack(contour_grid).reshape(-1, 2)
+
+    pdf = ks_gaussian.computePDF(contour_stack)
+    pdf = np.array(pdf).reshape((n_contours, n_contours))
+
+    return contour_grid, pdf, ks_gaussian
 
 def plotContourByKS2D(data,Ncontour,relativeFactor,alpha,numberOfContourLines,contourByLevelSet,plotData):
-    # 1. Creation du noyau gaussien
-    noyauGaussien = ot.KernelSmoothing()      # (*)
-    ksGaussian = noyauGaussien.build(data) # (*)
-    # 2. Evalue la densité sur une grille régulière
-    X1min=data[:,0].getMin()[0]
-    X1max=data[:,0].getMax()[0]
-    X2min=data[:,1].getMin()[0]
-    X2max=data[:,1].getMax()[0]
-    X1pars = [X1min,X1max,Ncontour]
-    X2pars = [X2min,X2max,Ncontour]
-    [X1,X2,Z] = computeContour2D(X1pars,X2pars,ksGaussian)
-    # TODO MBN Février 2017 : DistributionImplementation.cxx, lignes 2407 dans la méthode computeMinimumVolumeLevelSetWithThreshold
+    
+    contour_grid, Z, ks_gaussian = contour_2d(data, Ncontour)
+
+    X1, X2 = contour_grid
+    
     if (contourByLevelSet):
         # 3. Calcule la ligne de niveau pvalue associée a un niveau donné de probabilité
         numberOfContourLines=len(alpha)
-        # TODO MBN Février 2017: levelSet, threshold = ksGaussian.computeMinimumVolumeLevelSetWithThreshold(alpha)
-        # computeUnivariateMinimumVolumeLevelSetByQMC ?
         pvalues=np.zeros(numberOfContourLines)
         for i in range(numberOfContourLines):
-            levelSet, threshold = ksGaussian.computeMinimumVolumeLevelSetWithThreshold(alpha[i])  # (*)
+            levelSet, threshold = ks_gaussian.computeMinimumVolumeLevelSetWithThreshold(alpha[i])  # (*)
             pvalues[i]=threshold
         # 4. Cree le contour
         print(pvalues)
@@ -75,9 +67,8 @@ def plotContourByKS2D(data,Ncontour,relativeFactor,alpha,numberOfContourLines,co
     if (plotData):
         pl.plot(data[:,0],data[:,1],"b.")
     pl.title('2D Kernel Smoothing with Gaussian kernel')
-    mydescr = data.getDescription()
-    pl.xlabel(mydescr[0])
-    pl.ylabel(mydescr[1])
+    pl.xlabel('First component')
+    pl.ylabel('Second component')
 
     # median = np.unravel_index(Z.argmax(), Z.shape)
     # median = (X1[median], X2[median])
@@ -125,7 +116,7 @@ numberOfContourLines = 5
 contourByLevelSet = True
 plotData = False
 
-output = plotContourByKS2D(ot.Sample(X_r),Ncontour,relativeFactor,alpha,numberOfContourLines,contourByLevelSet,plotData)
+output = plotContourByKS2D(X_r,Ncontour,relativeFactor,alpha,numberOfContourLines,contourByLevelSet,plotData)
 
 median, outlier_path, extreme_quartile_path, mean_quartile_path = output
 median = pca.inverse_transform(median)
