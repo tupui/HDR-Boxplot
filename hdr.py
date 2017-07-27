@@ -46,6 +46,8 @@ def plot_contour_ks_2d(data, alpha, n_contours=50, level_set=True, plot_data=Fal
             levelSet, threshold = ks_gaussian.computeMinimumVolumeLevelSetWithThreshold(alpha[i])
             pvalues[i] = threshold
 
+        print('pvalues: ', pvalues)
+
         # Create contour plot
         fig = plt.contour(*contour_grid, pdf, pvalues)
 
@@ -79,14 +81,21 @@ def plot_contour_ks_2d(data, alpha, n_contours=50, level_set=True, plot_data=Fal
 
     plt.show()
 
-    outlier_path = np.unravel_index(np.where(pdf < pvalues[0]), pdf.shape)
-    outlier_path = np.array([X1[outlier_path], X2[outlier_path]])
-    extreme_quartile_path = np.unravel_index(
-        np.where((pdf > pvalues[0]) & (pdf < pvalues[1])), pdf.shape)
-    mean_quartile_path = np.unravel_index(
-        np.where((pdf > pvalues[1]) & (pdf < pvalues[2])), pdf.shape)
+    # pvalues = [ 0.00246924,  0.01403278,  0.03061416,  0.03600835]
+    # median = [-1, 0]
 
-    return median, outlier_path, extreme_quartile_path, mean_quartile_path
+    # Compute pdf on dataset and do this with pdf_data
+    pdf = pdf.flatten()
+    outlier_path = np.where(pdf < pvalues[0])
+    outlier_path = contour_stack[outlier_path]
+
+    extreme_quartile = np.where((pdf > pvalues[0]) & (pdf < pvalues[1]))
+    extreme_quartile = contour_stack[extreme_quartile]
+
+    mean_quartile = np.where(pdf > pvalues[1])
+    mean_quartile = contour_stack[mean_quartile]
+
+    return median, outlier_path, extreme_quartile, mean_quartile
 
 
 # Water surface temperature data from:
@@ -110,19 +119,21 @@ plt.show()
 
 output = plot_contour_ks_2d(X_r, [0.9, 0.5, 0.1, 0.001])
 
-median, outlier_path, extreme_quartile_path, mean_quartile_path = output
+median, outlier_path, extreme_quartile, mean_quartile = output
 median = pca.inverse_transform(median)
 # outlier_path = pca.inverse_transform(outlier_path)
-# extreme_quartile_path = pca.inverse_transform(extreme_quartile_path)
-# mean_quartile_path = pca.inverse_transform(mean_quartile_path)
+extreme_quartile = pca.inverse_transform(extreme_quartile)
+mean_quartile = pca.inverse_transform(mean_quartile)
 
-plt.figure('Time serie')
+plt.figure('Time Serie')
 n_sample, dim = data.shape
 x_common = np.linspace(1, 12, dim)
-plt.plot(np.array([x_common] * n_sample).T, data.T, alpha=.3)
+plt.plot(np.array([x_common] * n_sample).T, data.T, alpha=.4)
 plt.plot(x_common, median, c='k')
 
-# plt.plot(np.array([x_common] * len(outlier_path)).T, outlier_path.T, c='r')
+plt.plot(np.array([x_common] * len(mean_quartile)).T, mean_quartile.T, c='gray', alpha=.2)
+plt.plot(np.array([x_common] * len(extreme_quartile)).T, extreme_quartile.T, c='gray', alpha=.1)
+
 plt.xlabel('Month of the year')
 plt.ylabel('Water surface temperature (°C)')
 plt.show()
