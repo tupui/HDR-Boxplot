@@ -84,10 +84,12 @@ def plot_contour_ks_2d(data, alpha, n_contours=50, level_set=True, plot_data=Fal
     # pvalues = [ 0.00246924,  0.01403278,  0.03061416,  0.03600835]
     # median = [-1, 0]
 
-    # Compute pdf on dataset and do this with pdf_data
+    # Find quartiles and outliers curves
     pdf = pdf.flatten()
-    outlier_path = np.where(pdf < pvalues[0])
-    outlier_path = contour_stack[outlier_path]
+
+    pdf_data = np.array(ks_gaussian.computePDF(data)).flatten()
+    outliers = np.where(pdf_data < pvalues[0])
+    outliers = data[outliers]
 
     extreme_quartile = np.where((pdf > pvalues[0]) & (pdf < pvalues[1]))
     extreme_quartile = contour_stack[extreme_quartile]
@@ -95,7 +97,7 @@ def plot_contour_ks_2d(data, alpha, n_contours=50, level_set=True, plot_data=Fal
     mean_quartile = np.where(pdf > pvalues[1])
     mean_quartile = contour_stack[mean_quartile]
 
-    return median, outlier_path, extreme_quartile, mean_quartile
+    return median, outliers, extreme_quartile, mean_quartile
 
 
 # Water surface temperature data from:
@@ -107,9 +109,8 @@ print('Data shape: ', data.shape)
 pca = PCA(n_components=2)
 X_r = pca.fit_transform(data)
 
-pca_info = ("PCA: {}\n"
-            "Explained variance ratio (first two components): {}")
-print(pca_info.format(pca, pca.explained_variance_ratio_))
+print('Explained variance ratio (first two components): {}'
+      .format(pca, pca.explained_variance_ratio_))
 
 plt.figure('Bivariate space')
 plt.scatter(X_r[:, 0], X_r[:, 1], alpha=.8)
@@ -119,23 +120,24 @@ plt.show()
 
 output = plot_contour_ks_2d(X_r, [0.9, 0.5, 0.1, 0.001])
 
-median, outlier_path, extreme_quartile, mean_quartile = output
+median, outliers, extreme_quartile, mean_quartile = output
 median = pca.inverse_transform(median)
-# outlier_path = pca.inverse_transform(outlier_path)
+outliers = pca.inverse_transform(outliers)
 extreme_quartile = pca.inverse_transform(extreme_quartile)
 mean_quartile = pca.inverse_transform(mean_quartile)
 
 plt.figure('Time Serie')
 n_sample, dim = data.shape
 x_common = np.linspace(1, 12, dim)
-plt.plot(np.array([x_common] * n_sample).T, data.T, alpha=.4)
+plt.plot(np.array([x_common] * n_sample).T, data.T, alpha=.2)
 
 plt.fill_between(x_common, mean_quartile.max(axis=0),
-                 mean_quartile.min(axis=0), color='gray', alpha=.5)
+                 mean_quartile.min(axis=0), color='gray', alpha=.4)
 plt.fill_between(x_common, extreme_quartile.max(axis=0),
-                 extreme_quartile.min(axis=0), color='gray', alpha=.5)
+                 extreme_quartile.min(axis=0), color='gray', alpha=.4)
 
 plt.plot(x_common, median, c='k')
+plt.plot(np.array([x_common] * len(outliers)).T, outliers.T, c='r', alpha=0.7)
 
 plt.xlabel('Month of the year')
 plt.ylabel('Water surface temperature (°C)')
