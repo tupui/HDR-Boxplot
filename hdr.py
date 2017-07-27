@@ -56,14 +56,16 @@ def hdr_boxplot(data, alpha=[], threshold=0.9, n_contours=50, plot_data=False):
     X1, X2 = contour_grid
 
     # Compute contour line of pvalue linked to a given probability level
-    alpha.extend([0.9, 0.5, 0.001])
+    alpha.extend([threshold, 0.9, 0.5, 0.001])
+    alpha = list(set(alpha))
     alpha.sort(reverse=True)
+    print('alpha: ', alpha)
 
     n_contour_lines = len(alpha)
     pvalues = np.zeros(n_contour_lines)
     for i in range(n_contour_lines):
-        levelSet, threshold = ks_gaussian.computeMinimumVolumeLevelSetWithThreshold(alpha[i])
-        pvalues[i] = threshold
+        _, pvalue = ks_gaussian.computeMinimumVolumeLevelSetWithThreshold(alpha[i])
+        pvalues[i] = pvalue
 
     print('pvalues: ', pvalues)
 
@@ -98,7 +100,7 @@ def hdr_boxplot(data, alpha=[], threshold=0.9, n_contours=50, plot_data=False):
     # plt.show()
 
     pdf_data = np.array(ks_gaussian.computePDF(data_r)).flatten()
-    outliers = np.where(pdf_data < threshold)
+    outliers = np.where(pdf_data < pvalues[alpha.index(threshold)])
     outliers = data_r[outliers]
 
     extreme_quartile = np.where((pdf > pvalues[alpha.index(0.9)]) & (pdf < pvalues[alpha.index(0.5)]))
@@ -140,4 +142,5 @@ data = np.loadtxt('data/elnino.dat')
 print('Data shape: ', data.shape)
 
 output = hdr_boxplot(data)
-output = hdr_boxplot(data, alpha=0.8)
+output = hdr_boxplot(data, alpha=[0.8])
+output = hdr_boxplot(data, alpha=[0.8], threshold=0.7)
