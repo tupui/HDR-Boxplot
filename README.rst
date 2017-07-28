@@ -25,7 +25,7 @@ This module allows you to do exactly this:
 
 The output is the following figure: 
 
-.. image::  data/hdr-boxplot.pdf
+.. image::  data/hdr-boxplot.png
 
 How does it work?
 -----------------
@@ -37,7 +37,7 @@ This compression process allows to turn the functional representation into a
 scalar representation of the matrix. In other words, you can visualize each curve
 from its components. This is called a bivariate plot:
 
-.. image::  data/bivariate_pca_scatter.pdf
+.. image::  data/bivariate_pca_scatter.png
 
 This visualization exhibit a cluster of points. It indicate that a lot of
 curve lead to a common components. The center of the cluster is the mediane curve.
@@ -48,7 +48,7 @@ Using a kernel smoothing technique, the probability density function (PDF) of
 the 2D space can be recover. From this PDF, it is possible to compute the density
 probability linked to the cluster and plot its contours.
 
-.. image::  data/bivariate_pca.pdf
+.. image::  data/bivariate_pca.png
 
 Finally, using these contours, the different quantiles are extracted allong with
 the mediane curve and the outliers.
