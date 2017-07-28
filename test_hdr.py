@@ -19,6 +19,7 @@ print('Data shape: ', data.shape)
 
 def test_basic():
     output = hdr_boxplot(data, x_common=np.linspace(1, 12, 12),
+                         # path='.',
                          xlabel='Month of the year (-)',
                          ylabel='Water surface temperature (°C)')
     median, outliers, extreme_quartile, mean_quartile, extra_quartiles = output

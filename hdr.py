@@ -2,6 +2,7 @@ import os
 import numpy as np
 import openturns as ot
 from sklearn.decomposition import PCA
+import matplotlib.backends.backend_pdf
 import matplotlib.pyplot as plt
 plt.switch_backend('Qt5Agg')
 
@@ -102,29 +103,30 @@ def hdr_boxplot(data, x_common=None, path=None, alpha=[], threshold=0.9, n_conto
     mean_quartile = [mean_quartile.max(axis=0), mean_quartile.min(axis=0)]
 
     # Plots
-    plt.figure('Bivariate space')
+    figures = []
+    figures.append(plt.figure('Bivariate space'))
     plt.scatter(data_r[:, 0], data_r[:, 1], alpha=.8)
     plt.xlabel('First component')
     plt.ylabel('Second component')
 
-    plt.figure('Bivariate space: 2D Kernel Smoothing with Gaussian kernel')
-    fig = plt.contour(*contour_grid, pdf.reshape((n_contours, n_contours)), pvalues)
+    figures.append(plt.figure('Bivariate space: 2D Kernel Smoothing with Gaussian kernel'))
+    contour = plt.contour(*contour_grid, pdf.reshape((n_contours, n_contours)), pvalues)
     # Labels: probability instead of density
     fmt = {}
     for i in range(n_contour_lines):
-        l = fig.levels[i]
+        l = contour.levels[i]
         fmt[l] = "%.0f %%" % (alpha[i] * 100)
-    plt.clabel(fig, fig.levels, inline=True, fontsize=10, fmt=fmt)
+    plt.clabel(contour, contour.levels, inline=True, fontsize=10, fmt=fmt)
 
     if plot_data:
         plt.plot(data_r[:, 0], data_r[:, 1], "b.")
     plt.xlabel('First component')
     plt.ylabel('Second component')
-    # median = fig.collections[alpha.index(0.001)].get_paths()[0]
+    # median = contour.collections[alpha.index(0.001)].get_paths()[0]
     # median = np.median(median.vertices, axis=0)
     plt.plot(*median_r, c='r', marker='^')
 
-    plt.figure('Time Serie')
+    figures.append(plt.figure('Time Serie'))
     if x_common is None:
         x_common = np.linspace(0, 1, dim)
     plt.plot(np.array([x_common] * n_sample).T, data.T, alpha=.2)
@@ -143,11 +145,13 @@ def hdr_boxplot(data, x_common=None, path=None, alpha=[], threshold=0.9, n_conto
 
     try:
         path = os.path.join(path, 'hdr_boxplot.pdf')
-        fig.tight_layout()
-        fig.savefig(path, transparent=True, bbox_inches='tight')
+        pdf = matplotlib.backends.backend_pdf.PdfPages(path)
+        for fig in figures: ## will open an empty extra figure :(
+            fig.tight_layout()
+            pdf.savefig(fig, transparent=True, bbox_inches='tight')
+        pdf.close('all')
     except TypeError:
         plt.show()
-    
-    plt.close('all')
+        plt.close('all')
 
     return median, outliers, extreme_quartile, mean_quartile, extra_quartiles
