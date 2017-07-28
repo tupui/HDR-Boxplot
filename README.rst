@@ -4,7 +4,7 @@ HDR-Boxplot
 What is it?
 -----------
 
-This project implements the Functional highest density region boxplot technique [Hundman]_.
+This project implements the Functional highest density region boxplot technique [Hyndman2009]_.
 It is based on `OpenTURNS <http://www.openturns.org>`_ and `scikit-learn <http://scikit-learn.org>`_.
 
 When you have functional data, which is to say: a curve, you will want to answer
