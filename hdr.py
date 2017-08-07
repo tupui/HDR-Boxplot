@@ -1,15 +1,18 @@
 import os
 import numpy as np
+from scipy.optimize import differential_evolution
 from sklearn.decomposition import PCA
 from sklearn.neighbors import KernelDensity
 from sklearn.model_selection import GridSearchCV
+from sklearn.ensemble import IsolationForest
+from sklearn.model_selection import cross_val_score
 import matplotlib.backends.backend_pdf
 import matplotlib.pyplot as plt
 plt.switch_backend('Qt5Agg')
 
 
-def hdr_boxplot(data, x_common=None, path=None, alpha=[], threshold=0.9, n_contours=50,
-    plot_data=False, xlabel='t', ylabel='y'):
+def hdr_boxplot(data, x_common=None, path=None, alpha=[], threshold=0.9,
+    outliers='kde', optimize=False, n_contours=50, plot_data=False, xlabel='t', ylabel='y'):
     """High Density Region boxplot.
 
     Using the dataset :attr:`data`:
@@ -23,6 +26,8 @@ def hdr_boxplot(data, x_common=None, path=None, alpha=[], threshold=0.9, n_conto
     :param list(float) x_common: abscissa
     :param list(float) alpha: extra contour values
     :param float threshold: threshold for outliers
+    :param str outliers: detection method ['kde', 'forest']
+    :param bool optimize: bandwidth global optimization or grid search
     :param int n_contours: discretization to compute contour
     :param bool plot_data: append data on the bivariate plot
     :param str xlabel: label for x axis
@@ -39,15 +44,26 @@ def hdr_boxplot(data, x_common=None, path=None, alpha=[], threshold=0.9, n_conto
           .format(pca.explained_variance_ratio_, np.sum(pca.explained_variance_ratio_)))
 
     # Create gaussian kernel
-    scott = n_sample **(-1./(dim+4))
-    silverman = (n_sample  * (dim + 2) / 4.) ** (-1. / (dim + 4))
-    bandwidth = np.hstack([np.linspace(0.1, 1.0, 30), scott, silverman])
     cv = n_sample if n_sample < 50 else 50
-    grid = GridSearchCV(KernelDensity(),
-                        {'bandwidth': bandwidth},
-                        cv=cv, n_jobs=4)  # 20-fold cross-validation
-    grid.fit(data_r)
-    ks_gaussian = grid.best_estimator_
+
+    if optimize:
+        def bw_score(bw):
+            score = cross_val_score(KernelDensity(bandwidth=bw), data_r, cv=cv, n_jobs=-1)
+            return - score.mean()
+
+        bounds = [(0., 5.)]
+        results = differential_evolution(bw_score, bounds)
+        bw = results.x
+        ks_gaussian = KernelDensity(bandwidth=bw)
+    else:
+        scott = n_sample **(-1./(dim+4))
+        silverman = (n_sample  * (dim + 2) / 4.) ** (-1. / (dim + 4))
+        bandwidth = np.hstack([np.linspace(0.1, 5.0, 30), scott, silverman])
+        grid = GridSearchCV(KernelDensity(),
+                            {'bandwidth': bandwidth},
+                            cv=cv, n_jobs=-1)  # 20-fold cross-validation
+        grid.fit(data_r)
+        ks_gaussian = grid.best_estimator_
 
     # Evaluate density on a regular grid
     min_max = np.array([data_r.min(axis=0), data_r.max(axis=0)]).T
@@ -77,8 +93,16 @@ def hdr_boxplot(data, x_common=None, path=None, alpha=[], threshold=0.9, n_conto
     median_r = pdf.argmax()
     median_r = contour_stack[median_r]
 
-    outliers = np.where(pdf_r < pvalues[alpha.index(threshold)])
-    outliers = data_r[outliers]
+    if outliers == 'kde':
+        outliers = np.where(pdf_r < pvalues[alpha.index(threshold)])
+        outliers = data_r[outliers]
+    elif outliers == 'forest':
+        forrest = IsolationForest(contamination=(1 - threshold), n_jobs=-1)
+        detector = forrest.fit(data_r)
+        outliers = np.where(detector.predict(data_r) == -1)
+    else:
+        print('Unknown outlier method: no detection')
+        outliers = []
 
     extreme_quartile = np.where((pdf > pvalues[alpha.index(0.9)]) & (pdf < pvalues[alpha.index(0.5)]))
     extreme_quartile = contour_stack[extreme_quartile]
