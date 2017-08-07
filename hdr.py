@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 plt.switch_backend('Qt5Agg')
 
 
-def hdr_boxplot(data, x_common=None, path=None, alpha=[], threshold=0.9,
+def hdr_boxplot(data, x_common=None, path=None, alpha=[], threshold=0.95,
     outliers='kde', optimize=False, n_contours=50, plot_data=False, xlabel='t', ylabel='y'):
     """High Density Region boxplot.
 
@@ -187,7 +187,7 @@ def hdr_boxplot(data, x_common=None, path=None, alpha=[], threshold=0.9,
         for fig in figures:
             fig.tight_layout()
             pdf.savefig(fig, transparent=True, bbox_inches='tight')
-        pdf.close('all')
+        pdf.close()
     except TypeError:
         plt.show()
         plt.close('all')

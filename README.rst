@@ -5,8 +5,6 @@ What is it?
 -----------
 
 This project implements the Functional highest density region boxplot technique [Hyndman2009]_.
-It is based on `OpenTURNS <http://www.openturns.org>`_ and `scikit-learn <http://scikit-learn.org>`_.
-
 When you have functional data, which is to say: a curve, you will want to answer
 some questions such as:
 
@@ -61,7 +59,6 @@ The dependencies are:
 - Python >= 2.7 or >= 3.3
 - `scikit-learn <http://scikit-learn.org>`_ >= 0.18
 - `numpy <http://www.numpy.org>`_ >= 0.10
-- `OpenTURNS <http://www.openturns.org>`_ >= 1.8
 - `matplotlib <https://matplotlib.org>`_ >= 1.5.3
 
 Acknowledgement
