@@ -59,7 +59,9 @@ The dependencies are:
 - Python >= 2.7 or >= 3.3
 - `scikit-learn <http://scikit-learn.org>`_ >= 0.18
 - `numpy <http://www.numpy.org>`_ >= 0.10
+- `scipy <http://scipy.org>`_ >= 0.15
 - `matplotlib <https://matplotlib.org>`_ >= 1.5.3
+- pytest and mock for testing
 
 Acknowledgement
 ---------------

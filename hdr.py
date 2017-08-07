@@ -55,6 +55,7 @@ def hdr_boxplot(data, x_common=None, path=None, alpha=[], threshold=0.95,
         results = differential_evolution(bw_score, bounds)
         bw = results.x
         ks_gaussian = KernelDensity(bandwidth=bw)
+        ks_gaussian.fit(data_r)
     else:
         scott = n_sample **(-1./(dim+4))
         silverman = (n_sample  * (dim + 2) / 4.) ** (-1. / (dim + 4))
@@ -100,6 +101,7 @@ def hdr_boxplot(data, x_common=None, path=None, alpha=[], threshold=0.95,
         forrest = IsolationForest(contamination=(1 - threshold), n_jobs=-1)
         detector = forrest.fit(data_r)
         outliers = np.where(detector.predict(data_r) == -1)
+        outliers = data_r[outliers]
     else:
         print('Unknown outlier method: no detection')
         outliers = []
