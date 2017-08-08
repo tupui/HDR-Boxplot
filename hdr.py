@@ -9,7 +9,7 @@ from sklearn.ensemble import IsolationForest
 from sklearn.model_selection import cross_val_score
 import matplotlib.backends.backend_pdf
 import matplotlib.pyplot as plt
-plt.switch_backend('Qt5Agg')
+# plt.switch_backend('Qt5Agg')
 
 
 def kernel_smoothing(data, optimize=False):
