@@ -41,7 +41,7 @@ def kernel_smoothing(data, optimize=False):
 
 
 def hdr_boxplot(data, x_common=None, path=None, alpha=[], threshold=0.95,
-    outliers='kde', optimize=False, n_contours=50, plot_data=False, xlabel='t', ylabel='y'):
+    outliers='kde', optimize=False, n_contours=50, xlabel='t', ylabel='y'):
     """High Density Region boxplot.
 
     Using the dataset :attr:`data`:
@@ -58,7 +58,6 @@ def hdr_boxplot(data, x_common=None, path=None, alpha=[], threshold=0.95,
     :param str outliers: detection method ['kde', 'forest']
     :param bool optimize: bandwidth global optimization or grid search
     :param int n_contours: discretization to compute contour
-    :param bool plot_data: append data on the bivariate plot
     :param str xlabel: label for x axis
     :param str ylabel: label for y axis
     :returns: mediane curve along with 50%, 90% quartile (inf and sup curves) and outliers.
@@ -66,7 +65,7 @@ def hdr_boxplot(data, x_common=None, path=None, alpha=[], threshold=0.95,
     """
     n_sample, dim = data.shape
     # PCA and bivariate plot
-    pca = PCA(n_components=0.9, svd_solver='full')
+    pca = PCA(n_components=0.8, svd_solver='full')
     data_r = pca.fit_transform(data)
     n_components = len(pca.explained_variance_ratio_)
 
@@ -143,13 +142,22 @@ def hdr_boxplot(data, x_common=None, path=None, alpha=[], threshold=0.95,
 
     # Plots
     figures = []
-    figures.append(plt.figure('Bivariate space: 2D Kernel Smoothing with Gaussian kernel'))
-    # contour = plt.contourf(*contour_grid, pdf.reshape((n_contours, n_contours)), 100)
-    # plt.colorbar(contour, shrink=0.8, extend='both')
 
+    if n_components == 2:
+        figures.append(plt.figure('Bivariate space: 2D Kernel Smoothing with Gaussian kernel'))
+        contour = plt.contour(*contour_grid, pdf.reshape((n_contours, n_contours)), pvalues)
+        # contour = plt.contourf(*contour_grid, pdf.reshape((n_contours, n_contours)), 100)
+        # plt.colorbar(contour, shrink=0.8, extend='both')
+        # Labels: probability instead of density
+        fmt = {}
+        for i in range(n_contour_lines):
+            l = contour.levels[i]
+            fmt[l] = "%.0f %%" % (alpha[i] * 100)
+        plt.clabel(contour, contour.levels, inline=True, fontsize=10, fmt=fmt)
+
+    figures.append(plt.figure('Bivariate space'))
     plt.tick_params(axis='both', labelsize=8)
-
-    for i, j in itertools.product(range(n_components), range(n_components)):
+    for i, j in itertools.combinations_with_replacement(range(n_components), 2):
         ax = plt.subplot2grid((n_components, n_components), (j, i))
         ax.tick_params(axis='both', labelsize=(10 - n_components))
 
@@ -159,22 +167,11 @@ def hdr_boxplot(data, x_common=None, path=None, alpha=[], threshold=0.95,
             ax.plot(x_plot, np.exp(_ks.score_samples(x_plot)))
         elif i < j:  # lower corners
             ax.scatter(data_r[:, i], data_r[:, j], s=5, c='k', marker='o')
-        else:  # top corners
-            pass
-            # _pdf = pdf.reshape([n_contours] * n_components)
-            # contour = plt.contour(*contour_grid, pdf.reshape((n_contours, n_contours)), pvalues)
-            # Labels: probability instead of density
-            # fmt = {}
-            # for i in range(n_contour_lines):
-            #     l = contour.levels[i]
-            #     fmt[l] = "%.0f %%" % (alpha[i] * 100)
-            # plt.clabel(contour, contour.levels, inline=True, fontsize=10, fmt=fmt)
 
         if i == 0:
             ax.set_ylabel(str(j + 1))
         if j == (n_components - 1):
             ax.set_xlabel(str(i + 1))
-    plt.show()
 
     figures.append(plt.figure('Time Serie'))
     if x_common is None:
