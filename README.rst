@@ -61,7 +61,6 @@ The dependencies are:
 - `numpy <http://www.numpy.org>`_ >= 0.10
 - `scipy <http://scipy.org>`_ >= 0.15
 - `matplotlib <https://matplotlib.org>`_ >= 1.5.3
-- pytest and mock for testing
 
 Acknowledgement
 ---------------
