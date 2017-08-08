@@ -40,8 +40,9 @@ def kernel_smoothing(data, optimize=False):
     return ks_gaussian
 
 
-def hdr_boxplot(data, x_common=None, path=None, alpha=[], threshold=0.95,
-    outliers='kde', optimize=False, n_contours=50, xlabel='t', ylabel='y'):
+def hdr_boxplot(data, x_common=None, path=None, variance=0.8, alpha=[],
+                threshold=0.95, outliers='kde', optimize=False,
+                n_contours=50, xlabel='t', ylabel='y'):
     """High Density Region boxplot.
 
     Using the dataset :attr:`data`:
@@ -53,6 +54,7 @@ def hdr_boxplot(data, x_common=None, path=None, alpha=[], threshold=0.95,
 
     :param np.array data: dataset (n_samples, n_features)
     :param list(float) x_common: abscissa
+    :param float variance: percentage of total variance to conserve
     :param list(float) alpha: extra contour values
     :param float threshold: threshold for outliers
     :param str outliers: detection method ['kde', 'forest']
@@ -60,12 +62,13 @@ def hdr_boxplot(data, x_common=None, path=None, alpha=[], threshold=0.95,
     :param int n_contours: discretization to compute contour
     :param str xlabel: label for x axis
     :param str ylabel: label for y axis
-    :returns: mediane curve along with 50%, 90% quartile (inf and sup curves) and outliers.
+    :returns: mediane curve along with 50%, 90% quartile (inf and sup curves)
+    and outliers.
     :rtypes: np.array, list(np.array), np.array
     """
     n_sample, dim = data.shape
     # PCA and bivariate plot
-    pca = PCA(n_components=0.8, svd_solver='full')
+    pca = PCA(n_components=variance, svd_solver='full')
     data_r = pca.fit_transform(data)
     n_components = len(pca.explained_variance_ratio_)
 
@@ -113,7 +116,8 @@ def hdr_boxplot(data, x_common=None, path=None, alpha=[], threshold=0.95,
         print('Unknown outlier method: no detection')
         outliers = []
 
-    extreme_quartile = np.where((pdf > pvalues[alpha.index(0.9)]) & (pdf < pvalues[alpha.index(0.5)]))
+    extreme_quartile = np.where((pdf > pvalues[alpha.index(0.9)])
+                                & (pdf < pvalues[alpha.index(0.5)]))
     extreme_quartile = contour_stack[extreme_quartile]
 
     mean_quartile = np.where(pdf > pvalues[alpha.index(0.5)])
@@ -144,15 +148,17 @@ def hdr_boxplot(data, x_common=None, path=None, alpha=[], threshold=0.95,
     figures = []
 
     if n_components == 2:
-        figures.append(plt.figure('Bivariate space: 2D Kernel Smoothing with Gaussian kernel'))
-        contour = plt.contour(*contour_grid, pdf.reshape((n_contours, n_contours)), pvalues)
-        # contour = plt.contourf(*contour_grid, pdf.reshape((n_contours, n_contours)), 100)
+        figures.append(plt.figure('2D Kernel Smoothing with Gaussian kernel'))
+        contour = plt.contour(*contour_grid,
+                              pdf.reshape((n_contours, n_contours)), pvalues)
+        # contour = plt.contourf(*contour_grid,
+        #                        pdf.reshape((n_contours, n_contours)), 100)
         # plt.colorbar(contour, shrink=0.8, extend='both')
         # Labels: probability instead of density
         fmt = {}
         for i in range(n_contour_lines):
-            l = contour.levels[i]
-            fmt[l] = "%.0f %%" % (alpha[i] * 100)
+            lev = contour.levels[i]
+            fmt[lev] = "%.0f %%" % (alpha[i] * 100)
         plt.clabel(contour, contour.levels, inline=True, fontsize=10, fmt=fmt)
 
     figures.append(plt.figure('Bivariate space'))
@@ -192,7 +198,7 @@ def hdr_boxplot(data, x_common=None, path=None, alpha=[], threshold=0.95,
         plt.plot(np.array([x_common] * len(outliers)).T, outliers.T,
                  c='r', alpha=0.7)
     except ValueError:
-        pass
+        print('It seems that there are no outliers...')
 
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)

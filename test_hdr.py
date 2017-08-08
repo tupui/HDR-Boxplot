@@ -103,3 +103,13 @@ def test_optimize_bw(mock_show):
                 25.67,  26.18,  25.26,  23.96]
 
     npt.assert_almost_equal(median, median_t, decimal=2)
+
+
+@patch("matplotlib.pyplot.show")
+def test_variance(mock_show):
+    output = hdr_boxplot(data, variance=0.9)
+    median = output[0]
+    median_t = [22.49,  21.32,  20.42,  20.21,  20.66,  21.47,  22.6 ,  24.31,
+                25.68,  25.96,  24.88,  23.53]
+
+    npt.assert_almost_equal(median, median_t, decimal=2)
