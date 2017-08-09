@@ -1,3 +1,7 @@
+.. image:: https://circleci.com/gh/tupui/HDR-Boxplot.svg?style=svg
+    :target: https://circleci.com/gh/tupui/HDR-Boxplot
+.. image:: https://img.shields.io/badge/python-3.6-blue.svg
+
 HDR-Boxplot
 ===========
 

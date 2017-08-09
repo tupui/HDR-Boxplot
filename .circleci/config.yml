@@ -1,7 +1,4 @@
 # Python CircleCI 2.0 configuration file
-#
-# Check https://circleci.com/docs/2.0/language-python/ for more details
-#
 version: 2
 jobs:
   build:
@@ -38,7 +35,9 @@ jobs:
           command: |
             . venv/bin/activate
             coverage run -m pytest .
-            coverage report -m
+            coverage html
+            mkdir test-reports
+            mv htmlcov test-reports/coverage-report
 
       - store_artifacts:
           path: test-reports
