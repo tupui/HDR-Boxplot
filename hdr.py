@@ -1,5 +1,4 @@
 import numpy as np
-import matplotlib.pyplot as plt
 
 from statsmodels.multivariate.pca import PCA
 from statsmodels.nonparametric.kernel_density import KDEMultivariate
@@ -67,13 +66,34 @@ def inverse_transform_(pca, data):
 
 
 def hdrboxplot(data, ncomp=2, alpha=[], threshold=0.95, optimize=False,
-               n_contours=50, xdata=None, labels=None, ax=None, plot_opts={}):
+               n_contours=50, xdata=None, labels=None, ax=None):
     """Plot High Density Region boxplot.
 
     1. Compute a multivariate kernel density estimation,
     2. Compute contour lines for percentiles 90%, 50% and `alpha`%,
     3. Plot the bivariate plot,
     4. Compute mediane curve along with percentiles and outliers curves.
+
+    Behind the scene, the dataset is represented as a matrix. Each line
+    corresponding to a 1D curve. This matrix is then decomposed using Principal
+    Components Analysis (PCA). This allows to represent the data using a finite
+    number of modes, or components. This compression process allows to turn the
+    functional representation into a scalar representation of the matrix. In
+    other words, you can visualize each curve from its components. With 2
+    components, this is called a bivariate plot.
+
+    This visualization exhibit a cluster of points. It indicate that a lot of
+    curve lead to common components. The center of the cluster is the mediane
+    curve. An the more you get away from the cluster, the more the curve is
+    unlikely to be similar to the other curves.
+
+    Using a kernel smoothing technique, the probability density function (PDF)
+    of the multivariate space can be recover. From this PDF, it is possible to
+    compute the density probability linked to the cluster and plot its
+    contours.
+
+    Finally, using these contours, the different quantiles can be extracted
+    allong with the median curve and the outliers.
 
     Parameters
     ----------
@@ -105,21 +125,6 @@ def hdrboxplot(data, ncomp=2, alpha=[], threshold=0.95, optimize=False,
     ax : Matplotlib AxesSubplot instance, optional
         If given, this subplot is used to plot in instead of a new figure being
         created.
-    plot_opts : dict, optional
-        A dictionary with plotting options.  Any of the following can be
-        provided, if not present in `plot_opts` the defaults will be used::
-
-          - 'cmap_outliers', a Matplotlib LinearSegmentedColormap instance.
-          - 'c_inner', valid MPL color. Color of the central 50% region
-          - 'c_outer', valid MPL color. Color of the non-outlying region
-          - 'c_median', valid MPL color. Color of the median.
-          - 'lw_outliers', scalar.  Linewidth for drawing outlier curves.
-          - 'lw_median', scalar.  Linewidth for drawing the median curve.
-          - 'draw_nonout', bool.  If True, also draw non-outlying curves.
-
-    :returns: mediane curve along with 50%, 90% quartile (inf and sup curves)
-    and outliers.
-    :rtypes: np.array, list(np.array), np.array
 
     Returns
     -------
@@ -185,12 +190,9 @@ def hdrboxplot(data, ncomp=2, alpha=[], threshold=0.95, optimize=False,
     >>> plt.show()
 
     .. plot:: plots/graphics_functional_hdrboxplot.py
+
     """
     fig, ax = utils.create_mpl_ax(ax)
-
-    if plot_opts.get('cmap_outliers') is None:
-        from matplotlib.cm import rainbow_r
-        plot_opts['cmap_outliers'] = rainbow_r
 
     data = np.asarray(data)
     if xdata is None:
@@ -206,7 +208,9 @@ def hdrboxplot(data, ncomp=2, alpha=[], threshold=0.95, optimize=False,
 
     # Evaluate density on a regular grid
     min_max = np.array([data_r.min(axis=0), data_r.max(axis=0)]).T
-    contour_grid = np.meshgrid(*[np.linspace(*min_max[i], n_contours)
+    contour_grid = np.meshgrid(*[np.linspace(min_max[i, 0],
+                                             min_max[i, 1],
+                                             n_contours)
                                  for i in range(ncomp)])
     contour_stack = np.dstack(contour_grid).reshape(-1, ncomp)
 
@@ -229,10 +233,10 @@ def hdrboxplot(data, ncomp=2, alpha=[], threshold=0.95, optimize=False,
 
     outliers = np.where(pdf_r < pvalues[alpha.index(threshold)])
     labels = labels[outliers]
-    outliers = data_r[outliers]
+    outliers = data[outliers]
 
     extreme_percentile = np.where((pdf > pvalues[alpha.index(0.9)])
-                                & (pdf < pvalues[alpha.index(0.5)]))
+                                  & (pdf < pvalues[alpha.index(0.5)]))
     extreme_percentile = contour_stack[extreme_percentile]
 
     mean_percentile = np.where(pdf > pvalues[alpha.index(0.5)])
@@ -247,13 +251,12 @@ def hdrboxplot(data, ncomp=2, alpha=[], threshold=0.95, optimize=False,
             extra_percentile = contour_stack[extra_percentile]
             extra_percentile = inverse_transform_(pca, extra_percentile)
             extra_percentiles.extend([extra_percentile.max(axis=0),
-                                    extra_percentile.min(axis=0)])
+                                      extra_percentile.min(axis=0)])
     else:
         extra_percentiles = None
 
     # Inverse transform from bivariate plot to dataset
     median = inverse_transform_(pca, median)[0]
-    outliers = inverse_transform_(pca, outliers)
     extreme_percentile = inverse_transform_(pca, extreme_percentile)
     mean_percentile = inverse_transform_(pca, mean_percentile)
 
@@ -293,10 +296,10 @@ def hdrboxplot(data, ncomp=2, alpha=[], threshold=0.95, optimize=False,
             ax.plot(xdata, outlier,
                     ls='--', alpha=0.7, label=label)
     except ValueError:
-        print('It seems that there are no outliers...')
+        pass
 
     if labels is not None:
-        handles, labels = plt.gca().get_legend_handles_labels()
+        handles, labels = ax.get_legend_handles_labels()
         by_label = dict(zip(labels, handles))
         ax.legend(by_label.values(), by_label.keys(), loc='best')
 
