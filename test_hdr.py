@@ -4,6 +4,10 @@ import numpy as np
 import numpy.testing as npt
 from mock import patch
 
+import matplotlib.pyplot as plt
+plt.switch_backend('Qt5Agg')
+
+
 # Water surface temperature data from:
 # https://www.math.univ-toulouse.fr/~ferraty/SOFTWARES/NPFDA/npfda-datasets.html
 # http://www.cpc.ncep.noaa.gov/data/indices/
@@ -12,12 +16,15 @@ print('Data shape: ', data.shape)
 
 
 def test_basic():
-    output = hdr_boxplot(data, x_common=np.linspace(1, 12, 12),
-                         path='.',
-                         xlabel='Month of the year (-)',
-                         ylabel='Water surface temperature (°C)')
-    median, outliers, extreme_quartile, mean_quartile, extra_quartiles = output
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+
+    output = hdr_boxplot(data, xdata=np.linspace(1, 12, 12))
+    fig, median, outliers, extreme_quartile, mean_quartile, extra_quartiles = output
     assert extra_quartiles is None
+
+    plt.show()
 
     median_t = [22.32,  21.17,  20.26,  20.,  20.37,  21.13,  22.28,  24.1,
                 25.67,  26.18,  25.26,  23.96]

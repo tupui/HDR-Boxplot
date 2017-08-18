@@ -1,26 +1,20 @@
-import os
-import itertools
+# import itertools
+from statsmodels.compat.python import combinations, range
 import numpy as np
 
 from statsmodels.multivariate.pca import PCA
 from statsmodels.nonparametric.kernel_density import KDEMultivariate
-
-import matplotlib.backends.backend_pdf
-import matplotlib.pyplot as plt
-plt.switch_backend('Qt5Agg')
+from statsmodels.graphics import utils
 
 
-def hdr_boxplot(data, xdata=None, ncomp=2, path=None, alpha=[],
-                threshold=0.95, outliers='kde', optimize=False,
-                n_contours=50, xlabel='t', ylabel='y'):
-    """High Density Region boxplot.
+def hdr_boxplot(data, ncomp=2, alpha=[], threshold=0.95, optimize=False,
+                n_contours=50, xdata=None, labels=None, ax=None, plot_opts={}):
+    """Plot High Density Region boxplot.
 
-    Using the dataset :attr:`data`:
-
-    1. Compute a 2D kernel smoothing with a Gaussian kernel,
-    2. Compute contour lines for quartiles 90, 50 and :attr:`alpha`,
+    1. Compute a multivariate kernel density estimation,
+    2. Compute contour lines for percentiles 90%, 50% and `alpha`%,
     3. Plot the bivariate plot,
-    4. Compute mediane curve along with quartiles and outliers.
+    4. Compute mediane curve along with percentiles and outliers curves.
 
     Parameters
     ----------
@@ -30,20 +24,40 @@ def hdr_boxplot(data, xdata=None, ncomp=2, path=None, alpha=[],
         The first axis is the function index, the second axis the one along
         which the function is defined.  So ``data[0, :]`` is the first
         functional curve.
+    ncomp : int, optional
+        Number of components to use.  If None, returns the as many as the
+        smaller of the number of rows or columns in data.
+    alpha : list, optional
+        Extra percentile values to compute.
+    threshold : float
+        Percentile threshold value for outliers detection. High value means
+        a lower sensitivity to outliers. Default is `0.95`.
+    optimize: bool
+        Bandwidth optimization with cross validation or normal inferance
+    n_contours : int
+        Discretization per dimension of the reduced space.
     xdata : ndarray, optional
         The independent variable for the data.  If not given, it is assumed to
         be an array of integers 0..N with N the length of the vectors in
         `data`.
-    ncomp : int, optional
-        Number of components to use.  If None, returns the as many as the
-        smaller of the number of rows or columns in data
+    labels : sequence of scalar or str, optional
+        The labels or identifiers of the curves in `data`.  If given, outliers
+        are labeled in the plot.
+    ax : Matplotlib AxesSubplot instance, optional
+        If given, this subplot is used to plot in instead of a new figure being
+        created.
+    plot_opts : dict, optional
+        A dictionary with plotting options.  Any of the following can be
+        provided, if not present in `plot_opts` the defaults will be used::
 
-    :param list(float) alpha: extra contour values
-    :param float threshold: threshold for outliers
-    :param bool optimize: bandwidth global optimization or grid search
-    :param int n_contours: discretization to compute contour
-    :param str xlabel: label for x axis
-    :param str ylabel: label for y axis
+          - 'cmap_outliers', a Matplotlib LinearSegmentedColormap instance.
+          - 'c_inner', valid MPL color. Color of the central 50% region
+          - 'c_outer', valid MPL color. Color of the non-outlying region
+          - 'c_median', valid MPL color. Color of the median.
+          - 'lw_outliers', scalar.  Linewidth for drawing outlier curves.
+          - 'lw_median', scalar.  Linewidth for drawing the median curve.
+          - 'draw_nonout', bool.  If True, also draw non-outlying curves.
+
     :returns: mediane curve along with 50%, 90% quartile (inf and sup curves)
     and outliers.
     :rtypes: np.array, list(np.array), np.array
@@ -180,73 +194,55 @@ def hdr_boxplot(data, xdata=None, ncomp=2, path=None, alpha=[],
     mean_quartile = [mean_quartile.max(axis=0), mean_quartile.min(axis=0)]
 
     # Plots
-    figures = []
+    fig, ax = utils.create_mpl_ax(ax)
 
-    if ncomp == 2:
-        figures.append(plt.figure('2D Kernel Smoothing with Gaussian kernel'))
-        contour = plt.contour(*contour_grid,
-                              pdf.reshape((n_contours, n_contours)), pvalues)
-        # contour = plt.contourf(*contour_grid,
-        #                        pdf.reshape((n_contours, n_contours)), 100)
-        # plt.colorbar(contour, shrink=0.8, extend='both')
-        # Labels: probability instead of density
-        fmt = {}
-        for i in range(n_percentiles):
-            lev = contour.levels[i]
-            fmt[lev] = "%.0f %%" % (alpha[i] * 100)
-        plt.clabel(contour, contour.levels, inline=True, fontsize=10, fmt=fmt)
+    # if ncomp == 2:
+    #     ax.figure('2D Kernel Smoothing with Gaussian kernel')
+    #     contour = ax.contour(*contour_grid,
+    #                          pdf.reshape((n_contours, n_contours)), pvalues)
+    #     fmt = {}
+    #     for i in range(n_percentiles):
+    #         lev = contour.levels[i]
+    #         fmt[lev] = "%.0f %%" % (alpha[i] * 100)
+    #     ax.clabel(contour, contour.levels, inline=True, fontsize=10, fmt=fmt)
 
-    figures.append(plt.figure('Bivariate space'))
-    plt.tick_params(axis='both', labelsize=8)
-    for i, j in itertools.combinations_with_replacement(range(ncomp), 2):
-        ax = plt.subplot2grid((ncomp, ncomp), (j, i))
-        ax.tick_params(axis='both', labelsize=(10 - ncomp))
+    # ax.figure('Bivariate space')
+    # ax.tick_params(axis='both', labelsize=8)
+    # for i, j in itertools.combinations_with_replacement(range(ncomp), 2):
+    #     ax = ax.subplot2grid((ncomp, ncomp), (j, i))
+    #     ax.tick_params(axis='both', labelsize=(10 - ncomp))
 
-        if i == j:  # diag
-            x_plot = np.linspace(min(data_r[:, i]), max(data_r[:, i]), 100)[:, np.newaxis]
-            _ks = _kernel_smoothing(data_r[:, i, np.newaxis], optimize)
-            ax.plot(x_plot, _ks.pdf(x_plot))
-        elif i < j:  # lower corners
-            ax.scatter(data_r[:, i], data_r[:, j], s=5, c='k', marker='o')
+    #     if i == j:  # diag
+    #         x_plot = np.linspace(min(data_r[:, i]), max(data_r[:, i]), 100)[:, np.newaxis]
+    #         _ks = _kernel_smoothing(data_r[:, i, np.newaxis], optimize)
+    #         ax.plot(x_plot, _ks.pdf(x_plot))
+    #     elif i < j:  # lower corners
+    #         ax.scatter(data_r[:, i], data_r[:, j], s=5, c='k', marker='o')
 
-        if i == 0:
-            ax.set_ylabel(str(j + 1))
-        if j == (ncomp - 1):
-            ax.set_xlabel(str(i + 1))
+    #     if i == 0:
+    #         ax.set_ylabel(str(j + 1))
+    #     if j == (ncomp - 1):
+    #         ax.set_xlabel(str(i + 1))
 
-    figures.append(plt.figure('Time Serie'))
     if xdata is None:
         xdata = np.arange(0, 1, dim)
-    plt.plot(np.array([xdata] * n_samples).T, data.T, alpha=.2)
-    plt.fill_between(xdata, *mean_quartile, color='gray', alpha=.4)
-    plt.fill_between(xdata, *extreme_quartile, color='gray', alpha=.4)
+
+    ax.plot(np.array([xdata] * n_samples).T, data.T, alpha=.2)
+    ax.fill_between(xdata, *mean_quartile, color='gray', alpha=.4)
+    ax.fill_between(xdata, *extreme_quartile, color='gray', alpha=.4)
 
     try:
-        plt.plot(np.array([xdata] * len(extra_quartiles)).T,
-                 np.array(extra_quartiles).T, color='c', ls='-.', alpha=.4)
+        ax.plot(np.array([xdata] * len(extra_quartiles)).T,
+                np.array(extra_quartiles).T, color='c', ls='-.', alpha=.4)
     except TypeError:
         pass
 
-    plt.plot(xdata, median, c='k')
+    ax.plot(xdata, median, c='k')
 
     try:
-        plt.plot(np.array([xdata] * len(outliers)).T, outliers.T,
-                 c='r', alpha=0.7)
+        ax.plot(np.array([xdata] * len(outliers)).T, outliers.T,
+                c='r', alpha=0.7)
     except ValueError:
         print('It seems that there are no outliers...')
 
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
-
-    try:
-        path = os.path.join(path, 'hdr_boxplot.pdf')
-        pdf = matplotlib.backends.backend_pdf.PdfPages(path)
-        for fig in figures:
-            fig.tight_layout()
-            pdf.savefig(fig, transparent=True, bbox_inches='tight')
-        pdf.close()
-    except TypeError:
-        plt.show()
-        plt.close('all')
-
-    return median, outliers, extreme_quartile, mean_quartile, extra_quartiles
+    return fig, median, outliers, extreme_quartile, mean_quartile, extra_quartiles
