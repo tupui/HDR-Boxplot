@@ -1,9 +1,10 @@
-from statsmodels.compat.python import range
 import numpy as np
+import matplotlib.pyplot as plt
 
 from statsmodels.multivariate.pca import PCA
 from statsmodels.nonparametric.kernel_density import KDEMultivariate
 from statsmodels.graphics import utils
+from statsmodels.compat.python import range
 
 
 def kernel_smoothing_(data, optimize=False):
@@ -65,8 +66,8 @@ def inverse_transform_(pca, data):
     return projection
 
 
-def hdr_boxplot(data, ncomp=2, alpha=[], threshold=0.95, optimize=False,
-                n_contours=50, xdata=None, labels=None, ax=None, plot_opts={}):
+def hdrboxplot(data, ncomp=2, alpha=[], threshold=0.95, optimize=False,
+               n_contours=50, xdata=None, labels=None, ax=None, plot_opts={}):
     """Plot High Density Region boxplot.
 
     1. Compute a multivariate kernel density estimation,
@@ -135,6 +136,55 @@ def hdr_boxplot(data, ncomp=2, alpha=[], threshold=0.95, optimize=False,
             [sup, inf] curves.
          - 'outliers', ndarray. Outlier curves.
 
+    See Also
+    --------
+    banddepth, rainbowplot, fboxplot
+
+    Notes
+    -----
+    The median curve is the curve with the highest probability on the reduced
+    space of a Principal Component Analysis (PCA).
+
+    Outliers are defined as curves that fall outside the band corresponding
+    to the percentile given by `threshold`.
+
+    The non-outlying region is defined as the band made up of all the
+    non-outlying curves.
+
+    References
+    ----------
+    [1] R.J. Hyndman and H.L. Shang, "Rainbow Plots, Bagplots, and Boxplots for
+        Functional Data", vol. 19, pp. 29-25, 2010.
+
+    Examples
+    --------
+    Load the El Nino dataset.  Consists of 60 years worth of Pacific Ocean sea
+    surface temperature data.
+
+    >>> import matplotlib.pyplot as plt
+    >>> import statsmodels.api as sm
+    >>> data = sm.datasets.elnino.load()
+
+    Create a functional boxplot.  We see that the years 1982-83 and 1997-98 are
+    outliers; these are the years where El Nino (a climate pattern
+    characterized by warming up of the sea surface and higher air pressures)
+    occurred with unusual intensity.
+
+    >>> fig = plt.figure()
+    >>> ax = fig.add_subplot(111)
+    >>> res = sm.graphics.hdrboxplot(data.raw_data[:, 1:],
+    ...                              labels=data.raw_data[:, 0].astype(int),
+    ...                              ax=ax)
+
+    >>> ax.set_xlabel("Month of the year")
+    >>> ax.set_ylabel("Sea surface temperature (C)")
+    >>> ax.set_xticks(np.arange(13, step=3) - 1)
+    >>> ax.set_xticklabels(["", "Mar", "Jun", "Sep", "Dec"])
+    >>> ax.set_xlim([-0.2, 11.2])
+
+    >>> plt.show()
+
+    .. plot:: plots/graphics_functional_hdrboxplot.py
     """
     fig, ax = utils.create_mpl_ax(ax)
 
@@ -169,7 +219,8 @@ def hdr_boxplot(data, ncomp=2, alpha=[], threshold=0.95, optimize=False,
 
     n_percentiles = len(alpha)
     pdf_r = ks_gaussian.pdf(data_r).flatten()
-    pvalues = [np.percentile(pdf_r, (1 - alpha[i]) * 100, interpolation='linear')
+    pvalues = [np.percentile(pdf_r, (1 - alpha[i]) * 100,
+                             interpolation='linear')
                for i in range(n_percentiles)]
 
     # Find mean, quartiles and outliers curves
@@ -177,6 +228,7 @@ def hdr_boxplot(data, ncomp=2, alpha=[], threshold=0.95, optimize=False,
     median = contour_stack[median]
 
     outliers = np.where(pdf_r < pvalues[alpha.index(threshold)])
+    labels = labels[outliers]
     outliers = data_r[outliers]
 
     extreme_percentile = np.where((pdf > pvalues[alpha.index(0.9)])
@@ -186,7 +238,8 @@ def hdr_boxplot(data, ncomp=2, alpha=[], threshold=0.95, optimize=False,
     mean_percentile = np.where(pdf > pvalues[alpha.index(0.5)])
     mean_percentile = contour_stack[mean_percentile]
 
-    extra_alpha = [i for i in alpha if 0.5 != i and 0.9 != i and threshold != i]
+    extra_alpha = [i for i in alpha
+                   if 0.5 != i and 0.9 != i and threshold != i]
     if extra_alpha != []:
         extra_percentiles = []
         for i in extra_alpha:
@@ -204,8 +257,10 @@ def hdr_boxplot(data, ncomp=2, alpha=[], threshold=0.95, optimize=False,
     extreme_percentile = inverse_transform_(pca, extreme_percentile)
     mean_percentile = inverse_transform_(pca, mean_percentile)
 
-    extreme_percentile = [extreme_percentile.max(axis=0), extreme_percentile.min(axis=0)]
-    mean_percentile = [mean_percentile.max(axis=0), mean_percentile.min(axis=0)]
+    extreme_percentile = [extreme_percentile.max(axis=0),
+                          extreme_percentile.min(axis=0)]
+    mean_percentile = [mean_percentile.max(axis=0),
+                       mean_percentile.min(axis=0)]
 
     hdr_res = {
         "median": median,
@@ -216,22 +271,33 @@ def hdr_boxplot(data, ncomp=2, alpha=[], threshold=0.95, optimize=False,
     }
 
     # Plots
-    ax.plot(np.array([xdata] * n_samples).T, data.T, alpha=.2)
-    ax.fill_between(xdata, *mean_percentile, color='gray', alpha=.4)
-    ax.fill_between(xdata, *extreme_percentile, color='gray', alpha=.4)
+    ax.plot(np.array([xdata] * n_samples).T, data.T,
+            c='c', alpha=.1, label='dataset')
+    ax.fill_between(xdata, *mean_percentile,
+                    color='gray', alpha=.4,  label='50th percentile')
+    ax.fill_between(xdata, *extreme_percentile,
+                    color='gray', alpha=.3, label='90th percentile')
 
     try:
         ax.plot(np.array([xdata] * len(extra_percentiles)).T,
-                np.array(extra_percentiles).T, color='c', ls='-.', alpha=.4)
+                np.array(extra_percentiles).T,
+                c='y', ls='-.', alpha=.4, label='Extra percentiles')
     except TypeError:
         pass
 
     ax.plot(xdata, median, c='k')
 
     try:
-        ax.plot(np.array([xdata] * len(outliers)).T, outliers.T,
-                c='r', alpha=0.7)
+        for ii, outlier in enumerate(outliers):
+            label = str(labels[ii]) if labels is not None else None
+            ax.plot(xdata, outlier,
+                    ls='--', alpha=0.7, label=label)
     except ValueError:
         print('It seems that there are no outliers...')
+
+    if labels is not None:
+        handles, labels = plt.gca().get_legend_handles_labels()
+        by_label = dict(zip(labels, handles))
+        ax.legend(by_label.values(), by_label.keys(), loc='best')
 
     return fig, hdr_res

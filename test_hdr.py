@@ -1,4 +1,4 @@
-from hdr import hdr_boxplot
+from hdr import hdrboxplot
 import pytest
 import numpy as np
 import numpy.testing as npt
@@ -16,16 +16,15 @@ plt.switch_backend('Qt5Agg')
 data = sm.datasets.elnino.load()
 labels = data.raw_data[:, 0]
 data = data.raw_data[:, 1:]
-# print('Data shape: ', data.shape)
 
 
 def test_basic():
     fig = plt.figure()
     ax = fig.add_subplot(111)
 
-    output = hdr_boxplot(data, labels=labels, ax=ax, xdata=np.linspace(1, 12, 12))
-    fig, median, outliers, extreme_quartile, mean_quartile, extra_quartiles = output
-    assert extra_quartiles is None
+    fig, hdr_res = hdrboxplot(data, labels=labels, ax=ax,
+                               xdata=np.linspace(1, 12, 12))
+    assert hdr_res["extra_percentiles"] is None
 
     ax.set_xlabel("Month of the year")
     ax.set_ylabel("Sea surface temperature (C)")

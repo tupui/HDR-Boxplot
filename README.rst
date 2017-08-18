@@ -74,4 +74,4 @@ I am gratefull to the help and support on OpenTURNS Michaël Baudin has provided
 References
 ----------
 
-.. [Hyndman2009] Rob J Hyndman and Han Lin Shang. Rainb ow plots , bagplots and b oxplots for functional data. Journal of Computational and Graphical Statistics, 19:29-45, 2009
+.. [Hyndman2009] Rob J Hyndman and Han Lin Shang. Rainbow plots , bagplots and boxplots for functional data. Journal of Computational and Graphical Statistics, 19:29-45, 2009
