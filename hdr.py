@@ -1,10 +1,68 @@
-# import itertools
-from statsmodels.compat.python import combinations, range
+from statsmodels.compat.python import range
 import numpy as np
 
 from statsmodels.multivariate.pca import PCA
 from statsmodels.nonparametric.kernel_density import KDEMultivariate
 from statsmodels.graphics import utils
+
+
+def kernel_smoothing_(data, optimize=False):
+    """Create gaussian kernel.
+
+    Parameters
+    ----------
+    data : sequence of ndarrays or 2-D ndarray
+        The vectors of functions to create a functional boxplot from.  If a
+        sequence of 1-D arrays, these should all be the same size.
+        The first axis is the function index, the second axis the one along
+        which the function is defined.  So ``data[0, :]`` is the first
+        functional curve.
+    optimize : bool, optional
+        Use `normal_reference` or `cv_ml`. Default is False.
+
+    Returns
+    -------
+    kde : KDEMultivariate instance
+
+    """
+    _, dim = data.shape
+
+    if optimize:
+        kde = KDEMultivariate(data, bw='cv_ml', var_type='c' * dim)
+    else:
+        kde = KDEMultivariate(data, bw='normal_reference', var_type='c' * dim)
+
+    return kde
+
+
+def inverse_transform_(pca, data):
+    """Inverse transform on PCA.
+
+    Use PCA's `project` method by temporary replacing its factors with
+    `data`.
+
+    Parameters
+    ----------
+    pca : statsmodels Principal Component Analysis instance
+        The PCA object to use.
+    data : sequence of ndarrays or 2-D ndarray
+        The vectors of functions to create a functional boxplot from.  If a
+        sequence of 1-D arrays, these should all be the same size.
+        The first axis is the function index, the second axis the one along
+        which the function is defined.  So ``data[0, :]`` is the first
+        functional curve.
+
+    Returns
+    -------
+    projection : array
+        nobs by nvar array of the projection onto ncomp factors
+
+    """
+    factors = pca.factors
+    pca.factors = data.reshape(-1, factors.shape[1])
+    projection = pca.project()
+    pca.factors = factors
+    return projection
 
 
 def hdr_boxplot(data, ncomp=2, alpha=[], threshold=0.95, optimize=False,
@@ -67,78 +125,34 @@ def hdr_boxplot(data, ncomp=2, alpha=[], threshold=0.95, optimize=False,
     fig : Matplotlib figure instance
         If `ax` is None, the created figure.  Otherwise the figure to which
         `ax` is connected.
+    hdr_res : dict
+
+         - 'median', array. Median curve.
+         - 'mean_percentile', array. 50% percentile band. [sup, inf] curves
+         - 'extreme_percentile', list of array. 90% percentile band. [sup, inf]
+            curves.
+         - 'extra_percentiles', list of array. Extra percentile band.
+            [sup, inf] curves.
+         - 'outliers', ndarray. Outlier curves.
 
     """
-    def _kernel_smoothing(data, optimize=False):
-        """Create gaussian kernel.
+    fig, ax = utils.create_mpl_ax(ax)
 
-        Parameters
-        ----------
-        data : sequence of ndarrays or 2-D ndarray
-            The vectors of functions to create a functional boxplot from.  If a
-            sequence of 1-D arrays, these should all be the same size.
-            The first axis is the function index, the second axis the one along
-            which the function is defined.  So ``data[0, :]`` is the first
-            functional curve.
-        optimize : bool, optional
-            Use `normal_reference` or `cv_ml`. Default is False.
+    if plot_opts.get('cmap_outliers') is None:
+        from matplotlib.cm import rainbow_r
+        plot_opts['cmap_outliers'] = rainbow_r
 
-        Returns
-        -------
-        kde : KDEMultivariate instance
-
-        """
-        n_samples, dim = data.shape
-
-        if optimize:
-            kde = KDEMultivariate(data, bw='cv_ml', var_type='c' * dim)
-        else:
-            kde = KDEMultivariate(data, bw='normal_reference', var_type='c' * dim)
-
-        return kde
-
-    def _inverse_transform(pca, data):
-        """Inverse transform on PCA.
-
-        Use PCA's `project` method by temporary replacing its factors with
-        `data`.
-
-        Parameters
-        ----------
-        pca : statsmodels Principal Component Analysis instance
-            The PCA object to use.
-        data : sequence of ndarrays or 2-D ndarray
-            The vectors of functions to create a functional boxplot from.  If a
-            sequence of 1-D arrays, these should all be the same size.
-            The first axis is the function index, the second axis the one along
-            which the function is defined.  So ``data[0, :]`` is the first
-            functional curve.
-
-        Returns
-        -------
-        projection : array
-            nobs by nvar array of the projection onto ncomp factors
-
-        """
-        factors = pca.factors
-        pca.factors = data.reshape(-1, ncomp)
-        projection = pca.project()
-        pca.factors = factors
-        return projection
+    data = np.asarray(data)
+    if xdata is None:
+        xdata = np.arange(data.shape[1])
 
     n_samples, dim = data.shape
     # PCA and bivariate plot
     pca = PCA(data, ncomp=ncomp)
     data_r = pca.factors
 
-    # S = pca.eigenvals
-    # explained_variance_ = (S ** 2) / (n_samples - 1)
-    # total_var = explained_variance_.sum()
-    # explained_variance_ratio_ = explained_variance_ / total_var
-    # print(explained_variance_[:2], explained_variance_ratio_[:2])
-
     # Create gaussian kernel
-    ks_gaussian = _kernel_smoothing(data_r, optimize)
+    ks_gaussian = kernel_smoothing_(data_r, optimize)
 
     # Evaluate density on a regular grid
     min_max = np.array([data_r.min(axis=0), data_r.max(axis=0)]).T
@@ -149,7 +163,7 @@ def hdr_boxplot(data, ncomp=2, alpha=[], threshold=0.95, optimize=False,
     pdf = ks_gaussian.pdf(contour_stack).flatten()
 
     # Compute contour line of pvalue linked to a given probability level
-    alpha.extend([threshold, 0.9, 0.5])  # 0.001
+    alpha.extend([threshold, 0.9, 0.5])
     alpha = list(set(alpha))
     alpha.sort(reverse=True)
 
@@ -165,75 +179,50 @@ def hdr_boxplot(data, ncomp=2, alpha=[], threshold=0.95, optimize=False,
     outliers = np.where(pdf_r < pvalues[alpha.index(threshold)])
     outliers = data_r[outliers]
 
-    extreme_quartile = np.where((pdf > pvalues[alpha.index(0.9)])
+    extreme_percentile = np.where((pdf > pvalues[alpha.index(0.9)])
                                 & (pdf < pvalues[alpha.index(0.5)]))
-    extreme_quartile = contour_stack[extreme_quartile]
+    extreme_percentile = contour_stack[extreme_percentile]
 
-    mean_quartile = np.where(pdf > pvalues[alpha.index(0.5)])
-    mean_quartile = contour_stack[mean_quartile]
+    mean_percentile = np.where(pdf > pvalues[alpha.index(0.5)])
+    mean_percentile = contour_stack[mean_percentile]
 
     extra_alpha = [i for i in alpha if 0.5 != i and 0.9 != i and threshold != i]
     if extra_alpha != []:
-        extra_quartiles = []
+        extra_percentiles = []
         for i in extra_alpha:
-            extra_quartile = np.where(pdf > pvalues[alpha.index(i)])
-            extra_quartile = contour_stack[extra_quartile]
-            extra_quartile = _inverse_transform(pca, extra_quartile)
-            extra_quartiles.extend([extra_quartile.max(axis=0),
-                                    extra_quartile.min(axis=0)])
+            extra_percentile = np.where(pdf > pvalues[alpha.index(i)])
+            extra_percentile = contour_stack[extra_percentile]
+            extra_percentile = inverse_transform_(pca, extra_percentile)
+            extra_percentiles.extend([extra_percentile.max(axis=0),
+                                    extra_percentile.min(axis=0)])
     else:
-        extra_quartiles = None
+        extra_percentiles = None
 
     # Inverse transform from bivariate plot to dataset
-    median = _inverse_transform(pca, median)[0]
-    outliers = _inverse_transform(pca, outliers)
-    extreme_quartile = _inverse_transform(pca, extreme_quartile)
-    mean_quartile = _inverse_transform(pca, mean_quartile)
+    median = inverse_transform_(pca, median)[0]
+    outliers = inverse_transform_(pca, outliers)
+    extreme_percentile = inverse_transform_(pca, extreme_percentile)
+    mean_percentile = inverse_transform_(pca, mean_percentile)
 
-    extreme_quartile = [extreme_quartile.max(axis=0), extreme_quartile.min(axis=0)]
-    mean_quartile = [mean_quartile.max(axis=0), mean_quartile.min(axis=0)]
+    extreme_percentile = [extreme_percentile.max(axis=0), extreme_percentile.min(axis=0)]
+    mean_percentile = [mean_percentile.max(axis=0), mean_percentile.min(axis=0)]
+
+    hdr_res = {
+        "median": median,
+        "mean_percentile": mean_percentile,
+        "extreme_percentile": extreme_percentile,
+        "extra_percentiles": extra_percentiles,
+        "outliers": outliers
+    }
 
     # Plots
-    fig, ax = utils.create_mpl_ax(ax)
-
-    # if ncomp == 2:
-    #     ax.figure('2D Kernel Smoothing with Gaussian kernel')
-    #     contour = ax.contour(*contour_grid,
-    #                          pdf.reshape((n_contours, n_contours)), pvalues)
-    #     fmt = {}
-    #     for i in range(n_percentiles):
-    #         lev = contour.levels[i]
-    #         fmt[lev] = "%.0f %%" % (alpha[i] * 100)
-    #     ax.clabel(contour, contour.levels, inline=True, fontsize=10, fmt=fmt)
-
-    # ax.figure('Bivariate space')
-    # ax.tick_params(axis='both', labelsize=8)
-    # for i, j in itertools.combinations_with_replacement(range(ncomp), 2):
-    #     ax = ax.subplot2grid((ncomp, ncomp), (j, i))
-    #     ax.tick_params(axis='both', labelsize=(10 - ncomp))
-
-    #     if i == j:  # diag
-    #         x_plot = np.linspace(min(data_r[:, i]), max(data_r[:, i]), 100)[:, np.newaxis]
-    #         _ks = _kernel_smoothing(data_r[:, i, np.newaxis], optimize)
-    #         ax.plot(x_plot, _ks.pdf(x_plot))
-    #     elif i < j:  # lower corners
-    #         ax.scatter(data_r[:, i], data_r[:, j], s=5, c='k', marker='o')
-
-    #     if i == 0:
-    #         ax.set_ylabel(str(j + 1))
-    #     if j == (ncomp - 1):
-    #         ax.set_xlabel(str(i + 1))
-
-    if xdata is None:
-        xdata = np.arange(0, 1, dim)
-
     ax.plot(np.array([xdata] * n_samples).T, data.T, alpha=.2)
-    ax.fill_between(xdata, *mean_quartile, color='gray', alpha=.4)
-    ax.fill_between(xdata, *extreme_quartile, color='gray', alpha=.4)
+    ax.fill_between(xdata, *mean_percentile, color='gray', alpha=.4)
+    ax.fill_between(xdata, *extreme_percentile, color='gray', alpha=.4)
 
     try:
-        ax.plot(np.array([xdata] * len(extra_quartiles)).T,
-                np.array(extra_quartiles).T, color='c', ls='-.', alpha=.4)
+        ax.plot(np.array([xdata] * len(extra_percentiles)).T,
+                np.array(extra_percentiles).T, color='c', ls='-.', alpha=.4)
     except TypeError:
         pass
 
@@ -245,4 +234,4 @@ def hdr_boxplot(data, ncomp=2, alpha=[], threshold=0.95, optimize=False,
     except ValueError:
         print('It seems that there are no outliers...')
 
-    return fig, median, outliers, extreme_quartile, mean_quartile, extra_quartiles
+    return fig, hdr_res
