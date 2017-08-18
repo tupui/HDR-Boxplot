@@ -2,17 +2,15 @@ import os
 import itertools
 import numpy as np
 
-from sklearn.decomposition import PCA
-from sklearn.ensemble import IsolationForest
-
+from statsmodels.multivariate.pca import PCA
 from statsmodels.nonparametric.kernel_density import KDEMultivariate
 
 import matplotlib.backends.backend_pdf
 import matplotlib.pyplot as plt
-plt.switch_backend('Agg')
+plt.switch_backend('Qt5Agg')
 
 
-def hdr_boxplot(data, xdata=None, path=None, variance=0.8, alpha=[],
+def hdr_boxplot(data, xdata=None, ncomp=2, path=None, alpha=[],
                 threshold=0.95, outliers='kde', optimize=False,
                 n_contours=50, xlabel='t', ylabel='y'):
     """High Density Region boxplot.
@@ -36,10 +34,12 @@ def hdr_boxplot(data, xdata=None, path=None, variance=0.8, alpha=[],
         The independent variable for the data.  If not given, it is assumed to
         be an array of integers 0..N with N the length of the vectors in
         `data`.
-    :param float variance: percentage of total variance to conserve
+    ncomp : int, optional
+        Number of components to use.  If None, returns the as many as the
+        smaller of the number of rows or columns in data
+
     :param list(float) alpha: extra contour values
     :param float threshold: threshold for outliers
-    :param str outliers: detection method ['kde', 'forest']
     :param bool optimize: bandwidth global optimization or grid search
     :param int n_contours: discretization to compute contour
     :param str xlabel: label for x axis
@@ -47,11 +47,34 @@ def hdr_boxplot(data, xdata=None, path=None, variance=0.8, alpha=[],
     :returns: mediane curve along with 50%, 90% quartile (inf and sup curves)
     and outliers.
     :rtypes: np.array, list(np.array), np.array
-    """
 
+    Returns
+    -------
+    fig : Matplotlib figure instance
+        If `ax` is None, the created figure.  Otherwise the figure to which
+        `ax` is connected.
+
+    """
     def _kernel_smoothing(data, optimize=False):
-        """Create gaussian kernel."""
-        n_sample, dim = data.shape
+        """Create gaussian kernel.
+
+        Parameters
+        ----------
+        data : sequence of ndarrays or 2-D ndarray
+            The vectors of functions to create a functional boxplot from.  If a
+            sequence of 1-D arrays, these should all be the same size.
+            The first axis is the function index, the second axis the one along
+            which the function is defined.  So ``data[0, :]`` is the first
+            functional curve.
+        optimize : bool, optional
+            Use `normal_reference` or `cv_ml`. Default is False.
+
+        Returns
+        -------
+        kde : KDEMultivariate instance
+
+        """
+        n_samples, dim = data.shape
 
         if optimize:
             kde = KDEMultivariate(data, bw='cv_ml', var_type='c' * dim)
@@ -60,15 +83,45 @@ def hdr_boxplot(data, xdata=None, path=None, variance=0.8, alpha=[],
 
         return kde
 
-    n_sample, dim = data.shape
-    # PCA and bivariate plot
-    pca = PCA(n_components=variance, svd_solver='full')
-    data_r = pca.fit_transform(data)
-    n_components = len(pca.explained_variance_ratio_)
+    def _inverse_transform(pca, data):
+        """Inverse transform on PCA.
 
-    print('Explained variance ratio: {} -> {}'
-          .format(pca.explained_variance_ratio_,
-                  np.sum(pca.explained_variance_ratio_)))
+        Use PCA's `project` method by temporary replacing its factors with
+        `data`.
+
+        Parameters
+        ----------
+        pca : statsmodels Principal Component Analysis instance
+            The PCA object to use.
+        data : sequence of ndarrays or 2-D ndarray
+            The vectors of functions to create a functional boxplot from.  If a
+            sequence of 1-D arrays, these should all be the same size.
+            The first axis is the function index, the second axis the one along
+            which the function is defined.  So ``data[0, :]`` is the first
+            functional curve.
+
+        Returns
+        -------
+        projection : array
+            nobs by nvar array of the projection onto ncomp factors
+
+        """
+        factors = pca.factors
+        pca.factors = data.reshape(-1, ncomp)
+        projection = pca.project()
+        pca.factors = factors
+        return projection
+
+    n_samples, dim = data.shape
+    # PCA and bivariate plot
+    pca = PCA(data, ncomp=ncomp)
+    data_r = pca.factors
+
+    # S = pca.eigenvals
+    # explained_variance_ = (S ** 2) / (n_samples - 1)
+    # total_var = explained_variance_.sum()
+    # explained_variance_ratio_ = explained_variance_ / total_var
+    # print(explained_variance_[:2], explained_variance_ratio_[:2])
 
     # Create gaussian kernel
     ks_gaussian = _kernel_smoothing(data_r, optimize)
@@ -76,8 +129,8 @@ def hdr_boxplot(data, xdata=None, path=None, variance=0.8, alpha=[],
     # Evaluate density on a regular grid
     min_max = np.array([data_r.min(axis=0), data_r.max(axis=0)]).T
     contour_grid = np.meshgrid(*[np.linspace(*min_max[i], n_contours)
-                                 for i in range(n_components)])
-    contour_stack = np.dstack(contour_grid).reshape(-1, n_components)
+                                 for i in range(ncomp)])
+    contour_stack = np.dstack(contour_grid).reshape(-1, ncomp)
 
     pdf = ks_gaussian.pdf(contour_stack).flatten()
 
@@ -85,30 +138,18 @@ def hdr_boxplot(data, xdata=None, path=None, variance=0.8, alpha=[],
     alpha.extend([threshold, 0.9, 0.5])  # 0.001
     alpha = list(set(alpha))
     alpha.sort(reverse=True)
-    print('alpha: ', alpha)
 
-    n_contour_lines = len(alpha)
+    n_percentiles = len(alpha)
     pdf_r = ks_gaussian.pdf(data_r).flatten()
     pvalues = [np.percentile(pdf_r, (1 - alpha[i]) * 100, interpolation='linear')
-               for i in range(n_contour_lines)]
-
-    print('pvalues: ', pvalues)
+               for i in range(n_percentiles)]
 
     # Find mean, quartiles and outliers curves
-    median_r = pdf.argmax()
-    median_r = contour_stack[median_r]
+    median = pdf.argmax()
+    median = contour_stack[median]
 
-    if outliers == 'kde':
-        outliers = np.where(pdf_r < pvalues[alpha.index(threshold)])
-        outliers = data_r[outliers]
-    elif outliers == 'forest':
-        forrest = IsolationForest(contamination=(1 - threshold), n_jobs=-1)
-        detector = forrest.fit(data_r)
-        outliers = np.where(detector.predict(data_r) == -1)
-        outliers = data_r[outliers]
-    else:
-        print('Unknown outlier method: no detection')
-        outliers = []
+    outliers = np.where(pdf_r < pvalues[alpha.index(threshold)])
+    outliers = data_r[outliers]
 
     extreme_quartile = np.where((pdf > pvalues[alpha.index(0.9)])
                                 & (pdf < pvalues[alpha.index(0.5)]))
@@ -123,17 +164,17 @@ def hdr_boxplot(data, xdata=None, path=None, variance=0.8, alpha=[],
         for i in extra_alpha:
             extra_quartile = np.where(pdf > pvalues[alpha.index(i)])
             extra_quartile = contour_stack[extra_quartile]
-            extra_quartile = pca.inverse_transform(extra_quartile)
+            extra_quartile = _inverse_transform(pca, extra_quartile)
             extra_quartiles.extend([extra_quartile.max(axis=0),
                                     extra_quartile.min(axis=0)])
     else:
         extra_quartiles = None
 
     # Inverse transform from bivariate plot to dataset
-    median = pca.inverse_transform(median_r)
-    outliers = pca.inverse_transform(outliers)
-    extreme_quartile = pca.inverse_transform(extreme_quartile)
-    mean_quartile = pca.inverse_transform(mean_quartile)
+    median = _inverse_transform(pca, median)[0]
+    outliers = _inverse_transform(pca, outliers)
+    extreme_quartile = _inverse_transform(pca, extreme_quartile)
+    mean_quartile = _inverse_transform(pca, mean_quartile)
 
     extreme_quartile = [extreme_quartile.max(axis=0), extreme_quartile.min(axis=0)]
     mean_quartile = [mean_quartile.max(axis=0), mean_quartile.min(axis=0)]
@@ -141,7 +182,7 @@ def hdr_boxplot(data, xdata=None, path=None, variance=0.8, alpha=[],
     # Plots
     figures = []
 
-    if n_components == 2:
+    if ncomp == 2:
         figures.append(plt.figure('2D Kernel Smoothing with Gaussian kernel'))
         contour = plt.contour(*contour_grid,
                               pdf.reshape((n_contours, n_contours)), pvalues)
@@ -150,16 +191,16 @@ def hdr_boxplot(data, xdata=None, path=None, variance=0.8, alpha=[],
         # plt.colorbar(contour, shrink=0.8, extend='both')
         # Labels: probability instead of density
         fmt = {}
-        for i in range(n_contour_lines):
+        for i in range(n_percentiles):
             lev = contour.levels[i]
             fmt[lev] = "%.0f %%" % (alpha[i] * 100)
         plt.clabel(contour, contour.levels, inline=True, fontsize=10, fmt=fmt)
 
     figures.append(plt.figure('Bivariate space'))
     plt.tick_params(axis='both', labelsize=8)
-    for i, j in itertools.combinations_with_replacement(range(n_components), 2):
-        ax = plt.subplot2grid((n_components, n_components), (j, i))
-        ax.tick_params(axis='both', labelsize=(10 - n_components))
+    for i, j in itertools.combinations_with_replacement(range(ncomp), 2):
+        ax = plt.subplot2grid((ncomp, ncomp), (j, i))
+        ax.tick_params(axis='both', labelsize=(10 - ncomp))
 
         if i == j:  # diag
             x_plot = np.linspace(min(data_r[:, i]), max(data_r[:, i]), 100)[:, np.newaxis]
@@ -170,13 +211,13 @@ def hdr_boxplot(data, xdata=None, path=None, variance=0.8, alpha=[],
 
         if i == 0:
             ax.set_ylabel(str(j + 1))
-        if j == (n_components - 1):
+        if j == (ncomp - 1):
             ax.set_xlabel(str(i + 1))
 
     figures.append(plt.figure('Time Serie'))
     if xdata is None:
         xdata = np.arange(0, 1, dim)
-    plt.plot(np.array([xdata] * n_sample).T, data.T, alpha=.2)
+    plt.plot(np.array([xdata] * n_samples).T, data.T, alpha=.2)
     plt.fill_between(xdata, *mean_quartile, color='gray', alpha=.4)
     plt.fill_between(xdata, *extreme_quartile, color='gray', alpha=.4)
 
