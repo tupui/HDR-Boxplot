@@ -1,46 +1,18 @@
 import os
 import itertools
 import numpy as np
-from scipy.optimize import differential_evolution
+
 from sklearn.decomposition import PCA
-from sklearn.neighbors import KernelDensity
-from sklearn.model_selection import GridSearchCV
 from sklearn.ensemble import IsolationForest
-from sklearn.model_selection import cross_val_score
+
+from statsmodels.nonparametric.kernel_density import KDEMultivariate
+
 import matplotlib.backends.backend_pdf
 import matplotlib.pyplot as plt
 plt.switch_backend('Agg')
 
 
-def kernel_smoothing(data, optimize=False):
-    """Create gaussian kernel."""
-    n_sample, dim = data.shape
-    cv = n_sample if n_sample < 50 else 50
-
-    if optimize:
-        def bw_score(bw):
-            score = cross_val_score(KernelDensity(bandwidth=bw), data, cv=cv, n_jobs=-1)
-            return - score.mean()
-
-        bounds = [(0., 5.)]
-        results = differential_evolution(bw_score, bounds)
-        bw = results.x
-        ks_gaussian = KernelDensity(bandwidth=bw)
-        ks_gaussian.fit(data)
-    else:
-        scott = n_sample **(-1./(dim + 4))
-        silverman = (n_sample  * (dim + 2) / 4.) ** (-1. / (dim + 4))
-        bandwidth = np.hstack([np.linspace(0.1, 5.0, 30), scott, silverman])
-        grid = GridSearchCV(KernelDensity(),
-                            {'bandwidth': bandwidth},
-                            cv=cv, n_jobs=-1)  # 20-fold cross-validation
-        grid.fit(data)
-        ks_gaussian = grid.best_estimator_
-
-    return ks_gaussian
-
-
-def hdr_boxplot(data, x_common=None, path=None, variance=0.8, alpha=[],
+def hdr_boxplot(data, xdata=None, path=None, variance=0.8, alpha=[],
                 threshold=0.95, outliers='kde', optimize=False,
                 n_contours=50, xlabel='t', ylabel='y'):
     """High Density Region boxplot.
@@ -52,8 +24,18 @@ def hdr_boxplot(data, x_common=None, path=None, variance=0.8, alpha=[],
     3. Plot the bivariate plot,
     4. Compute mediane curve along with quartiles and outliers.
 
-    :param np.array data: dataset (n_samples, n_features)
-    :param list(float) x_common: abscissa
+    Parameters
+    ----------
+    data : sequence of ndarrays or 2-D ndarray
+        The vectors of functions to create a functional boxplot from.  If a
+        sequence of 1-D arrays, these should all be the same size.
+        The first axis is the function index, the second axis the one along
+        which the function is defined.  So ``data[0, :]`` is the first
+        functional curve.
+    xdata : ndarray, optional
+        The independent variable for the data.  If not given, it is assumed to
+        be an array of integers 0..N with N the length of the vectors in
+        `data`.
     :param float variance: percentage of total variance to conserve
     :param list(float) alpha: extra contour values
     :param float threshold: threshold for outliers
@@ -66,6 +48,18 @@ def hdr_boxplot(data, x_common=None, path=None, variance=0.8, alpha=[],
     and outliers.
     :rtypes: np.array, list(np.array), np.array
     """
+
+    def _kernel_smoothing(data, optimize=False):
+        """Create gaussian kernel."""
+        n_sample, dim = data.shape
+
+        if optimize:
+            kde = KDEMultivariate(data, bw='cv_ml', var_type='c' * dim)
+        else:
+            kde = KDEMultivariate(data, bw='normal_reference', var_type='c' * dim)
+
+        return kde
+
     n_sample, dim = data.shape
     # PCA and bivariate plot
     pca = PCA(n_components=variance, svd_solver='full')
@@ -77,7 +71,7 @@ def hdr_boxplot(data, x_common=None, path=None, variance=0.8, alpha=[],
                   np.sum(pca.explained_variance_ratio_)))
 
     # Create gaussian kernel
-    ks_gaussian = kernel_smoothing(data_r, optimize)
+    ks_gaussian = _kernel_smoothing(data_r, optimize)
 
     # Evaluate density on a regular grid
     min_max = np.array([data_r.min(axis=0), data_r.max(axis=0)]).T
@@ -85,7 +79,7 @@ def hdr_boxplot(data, x_common=None, path=None, variance=0.8, alpha=[],
                                  for i in range(n_components)])
     contour_stack = np.dstack(contour_grid).reshape(-1, n_components)
 
-    pdf = np.exp(ks_gaussian.score_samples(contour_stack)).flatten()
+    pdf = ks_gaussian.pdf(contour_stack).flatten()
 
     # Compute contour line of pvalue linked to a given probability level
     alpha.extend([threshold, 0.9, 0.5])  # 0.001
@@ -94,7 +88,7 @@ def hdr_boxplot(data, x_common=None, path=None, variance=0.8, alpha=[],
     print('alpha: ', alpha)
 
     n_contour_lines = len(alpha)
-    pdf_r = np.exp(ks_gaussian.score_samples(data_r)).flatten()
+    pdf_r = ks_gaussian.pdf(data_r).flatten()
     pvalues = [np.percentile(pdf_r, (1 - alpha[i]) * 100, interpolation='linear')
                for i in range(n_contour_lines)]
 
@@ -169,8 +163,8 @@ def hdr_boxplot(data, x_common=None, path=None, variance=0.8, alpha=[],
 
         if i == j:  # diag
             x_plot = np.linspace(min(data_r[:, i]), max(data_r[:, i]), 100)[:, np.newaxis]
-            _ks = kernel_smoothing(data_r[:, i, np.newaxis], optimize)
-            ax.plot(x_plot, np.exp(_ks.score_samples(x_plot)))
+            _ks = _kernel_smoothing(data_r[:, i, np.newaxis], optimize)
+            ax.plot(x_plot, _ks.pdf(x_plot))
         elif i < j:  # lower corners
             ax.scatter(data_r[:, i], data_r[:, j], s=5, c='k', marker='o')
 
@@ -180,22 +174,22 @@ def hdr_boxplot(data, x_common=None, path=None, variance=0.8, alpha=[],
             ax.set_xlabel(str(i + 1))
 
     figures.append(plt.figure('Time Serie'))
-    if x_common is None:
-        x_common = np.linspace(0, 1, dim)
-    plt.plot(np.array([x_common] * n_sample).T, data.T, alpha=.2)
-    plt.fill_between(x_common, *mean_quartile, color='gray', alpha=.4)
-    plt.fill_between(x_common, *extreme_quartile, color='gray', alpha=.4)
+    if xdata is None:
+        xdata = np.arange(0, 1, dim)
+    plt.plot(np.array([xdata] * n_sample).T, data.T, alpha=.2)
+    plt.fill_between(xdata, *mean_quartile, color='gray', alpha=.4)
+    plt.fill_between(xdata, *extreme_quartile, color='gray', alpha=.4)
 
     try:
-        plt.plot(np.array([x_common] * len(extra_quartiles)).T,
+        plt.plot(np.array([xdata] * len(extra_quartiles)).T,
                  np.array(extra_quartiles).T, color='c', ls='-.', alpha=.4)
     except TypeError:
         pass
 
-    plt.plot(x_common, median, c='k')
+    plt.plot(xdata, median, c='k')
 
     try:
-        plt.plot(np.array([x_common] * len(outliers)).T, outliers.T,
+        plt.plot(np.array([xdata] * len(outliers)).T, outliers.T,
                  c='r', alpha=0.7)
     except ValueError:
         print('It seems that there are no outliers...')
